@@ -17,7 +17,8 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  PermissionsBitField
+  PermissionsBitField,
+  MessageFlags
 } = require('discord.js');
 require('dotenv').config();
 
@@ -54,11 +55,128 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
-// Permissão restrita: Apenas Dono do servidor ou Administrador do Discord
+// Permissão restrita: Dono do servidor ou Administrador
 function isDonoOuAdmin(interaction) {
   const isOwner = interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
   return isOwner || isAdmin;
+}
+
+// GERA O PAINEL PRINCIPAL NO FORMATO CONTAINER INTEGRADO (V2)
+function gerarPayloadPainelV2(guild) {
+  const textoConteudo = 
+    `## ${config.painelTitulo}\n` +
+    `${config.painelDescricao}\n\n` +
+    `### 🛡️ Etapas do Processo\n` +
+    `• 📝 Preenchimento do formulário\n` +
+    `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
+    `• 🔍 Análise da candidatura\n` +
+    `• 🎶🎤 Entrevista com a equipe\n` +
+    `• ✅ Resultado final\n\n` +
+    `🤖 Organizações • Roleplay | Desenvolvido por Cetus`;
+
+  const containerComponents = [
+    {
+      type: 10, // Text Display
+      content: textoConteudo
+    },
+    {
+      type: 14, // Separator
+      divider: true,
+      spacing: 1
+    },
+    {
+      type: 1, // ActionRow com os botões dentro do container
+      components: [
+        {
+          type: 2,
+          style: 2, // Secondary
+          custom_id: 'iniciar_formulario',
+          label: 'Formulário',
+          emoji: { name: '📝' }
+        },
+        {
+          type: 2,
+          style: 2, // Secondary
+          custom_id: 'abrir_config_painel',
+          emoji: { name: '⚙️' }
+        }
+      ]
+    }
+  ];
+
+  return {
+    components: [
+      {
+        type: 17, // Container Block (V2)
+        accent_color: config.painelCorHex,
+        components: containerComponents
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// GERA O MENU DE NAVEGAÇÃO DE CONFIGURAÇÕES NO FORMATO CONTAINER (V2)
+function gerarPayloadConfiguracoesV2() {
+  const textoConteudo = 
+    `## ⚙️ Central de Configurações\n` +
+    `Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:\n\n` +
+    `🤖 Organizações • Roleplay | Desenvolvido por Cetus`;
+
+  return {
+    components: [
+      {
+        type: 17, // Container
+        accent_color: config.painelCorHex,
+        components: [
+          {
+            type: 10, // Text Display
+            content: textoConteudo
+          },
+          {
+            type: 14, // Separator
+            divider: true,
+            spacing: 1
+          },
+          {
+            type: 1, // ActionRow com os botões
+            components: [
+              {
+                type: 2,
+                style: 2,
+                custom_id: 'menu_config_geral',
+                label: 'Config',
+                emoji: { name: '⚙️' }
+              },
+              {
+                type: 2,
+                style: 2,
+                custom_id: 'menu_visual_textos',
+                label: 'Visual & Textos',
+                emoji: { name: '🎨' }
+              },
+              {
+                type: 2,
+                style: 2,
+                custom_id: 'menu_definir_config',
+                label: 'Definir configurações',
+                emoji: { name: '🛠️' }
+              },
+              {
+                type: 2,
+                style: 2,
+                custom_id: 'menu_gerenciar_perguntas',
+                label: 'Gerenciar perguntas',
+                emoji: { name: '❓' }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
 }
 
 // Sincroniza o painel público automaticamente
@@ -72,10 +190,8 @@ async function sincronizarPainelPublico(guild) {
     const mensagem = await canal.messages.fetch(config.painelMessageId).catch(() => null);
     if (!mensagem) return;
 
-    await mensagem.edit({
-      embeds: [gerarEmbedPainelPrincipal(guild || canal.guild)],
-      components: [gerarBotaoFormularioComConfig()]
-    });
+    const payload = gerarPayloadPainelV2(guild || canal.guild);
+    await mensagem.edit(payload);
   } catch (err) {
     console.error('Erro ao sincronizar painel público:', err);
   }
@@ -198,10 +314,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      const msg = await interaction.channel.send({
-        embeds: [gerarEmbedPainelPrincipal(interaction.guild)],
-        components: [gerarBotaoFormularioComConfig()]
-      });
+      const payload = gerarPayloadPainelV2(interaction.guild);
+      const msg = await interaction.channel.send(payload);
 
       config.painelChannelId = msg.channel.id;
       config.painelMessageId = msg.id;
@@ -214,11 +328,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem abrir as configurações.', ephemeral: true });
       }
 
-      return interaction.reply({
-        embeds: [gerarEmbedMenuNavegacao()],
-        components: gerarBotoesConfigGeral(),
-        ephemeral: true
-      });
+      const payload = gerarPayloadConfiguracoesV2();
+      payload.ephemeral = true;
+      return interaction.reply(payload);
     }
     return;
   }
@@ -234,12 +346,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      const payload = gerarPayloadConfiguracoesV2();
       if (interaction.replied || interaction.deferred) {
-        return interaction.followUp({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral(), ephemeral: true });
+        payload.ephemeral = true;
+        return interaction.followUp(payload);
       } else if (customId === 'abrir_config_painel') {
-        return interaction.reply({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral(), ephemeral: true });
+        payload.ephemeral = true;
+        return interaction.reply(payload);
       } else {
-        return interaction.update({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral() });
+        return interaction.update(payload);
       }
     }
 
@@ -734,52 +849,6 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
-// PAINEL PRINCIPAL
-function gerarEmbedPainelPrincipal(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle(config.painelTitulo)
-    .setDescription(
-      `${config.painelDescricao}\n\n` +
-      `🛡️ **Etapas do Processo**\n` +
-      `• 📝 Preenchimento do formulário\n` +
-      `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
-      `• 🔍 Análise da candidatura\n` +
-      `• 🎶🎤 Entrevista com a equipe\n` +
-      `• ✅ Resultado final\n\n` +
-      `───────────────\n` +
-      `🤖 Organizações • Roleplay | Desenvolvido por Cetus`
-    )
-    .setColor(config.painelCorHex);
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  if (config.painelBannerUrl) {
-    embed.setImage(config.painelBannerUrl);
-  }
-
-  return embed;
-}
-
-function gerarBotaoFormularioComConfig() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
-  );
-}
-
-function gerarEmbedMenuNavegacao() {
-  return new EmbedBuilder()
-    .setTitle('⚙️ Central de Configurações')
-    .setDescription(
-      'Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:\n\n' +
-      '───────────────\n' +
-      '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-    )
-    .setColor(config.painelCorHex);
-}
-
 function gerarEmbedStatusConfiguracoes() {
   return new EmbedBuilder()
     .setTitle('⚙️ Configuração do Recrutamento')
@@ -795,17 +864,6 @@ function gerarEmbedStatusConfiguracoes() {
       { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false },
       { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
-}
-
-function gerarBotoesConfigGeral() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Config').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_visual_textos').setLabel('Visual & Textos').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Gerenciar perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
-    )
-  ];
 }
 
 function gerarEmbedVisualTextos() {
