@@ -157,7 +157,10 @@ client.once(Events.ClientReady, async (c) => {
   const commands = [
     new SlashCommandBuilder()
       .setName('recrutamento')
-      .setDescription('Envia o painel oficial de recrutamento')
+      .setDescription('Envia o painel oficial de recrutamento'),
+    new SlashCommandBuilder()
+      .setName('configuracao')
+      .setDescription('Abre o painel privado de configurações do sistema')
   ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(cleanToken);
@@ -181,7 +184,7 @@ client.once(Events.ClientReady, async (c) => {
 // Interações do Bot
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'recrutamento' || interaction.commandName === 'painel') {
+    if (interaction.commandName === 'recrutamento') {
       await interaction.deferReply({ ephemeral: true });
 
       const msg = await interaction.channel.send({
@@ -194,19 +197,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       return interaction.editReply({ content: '✅ Painel enviado com sucesso.' });
     }
-    return;
-  }
 
-  if (interaction.isButton()) {
-    const customId = interaction.customId;
-
-    if (customId === 'abrir_config_painel') {
+    if (interaction.commandName === 'configuracao') {
       return interaction.reply({
         embeds: [gerarEmbedStatusConfiguracoes()],
         components: gerarBotoesConfigGeral(),
         ephemeral: true
       });
     }
+    return;
+  }
+
+  if (interaction.isButton()) {
+    const customId = interaction.customId;
 
     if (customId === 'menu_config_geral') {
       return interaction.update({
@@ -279,7 +282,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // NOVO BOTAO EXCLUSIVO PARA ALTERAR BANNER DE APROVAÇÃO
     if (customId === 'btn_editar_banner_aprovacao') {
       const modal = new ModalBuilder()
         .setCustomId('modal_editar_banner_aprovacao')
@@ -338,7 +340,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
     }
 
-    // APROVAÇÃO COM ANÚNCIO E ATRIBUIÇÃO DE CARGO
+    // APROVAÇÃO E REPROVAÇÃO DE CANDIDATO
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const isOwner = interaction.guild.ownerId === interaction.user.id;
       const hasRecruiterRole = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);
@@ -364,7 +366,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.update({ embeds: [embedAtual], components: [] });
 
-        // PV do Candidato
         if (member) {
           const embedPvAprovado = new EmbedBuilder()
             .setTitle('🎉 Recrutamento Aprovado')
@@ -380,7 +381,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           member.send({ embeds: [embedPvAprovado] }).catch(() => null);
         }
 
-        // ANÚNCIO NO CANAL COM FOOTER CETUS
         if (config.anunciosChannelId) {
           const canalAnuncios = await interaction.guild.channels.fetch(config.anunciosChannelId).catch(() => null);
           if (canalAnuncios) {
@@ -658,10 +658,10 @@ function gerarEmbedPainelPrincipal(guild) {
   return embed;
 }
 
+// BOTAO UNICO DE FORMULARIO NO PAINEL PUBLICO (SEM BOTOES DE CONFIGURACAO EXPOSTOS)
 function gerarBotaoFormularioComConfig() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -766,10 +766,10 @@ function gerarSelectsDefinirConfig() {
       new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📣 Selecione o Canal de Anúncios (Aprovados)').setChannelTypes(ChannelType.GuildText)
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
     )
   ];
 }
