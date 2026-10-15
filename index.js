@@ -54,7 +54,7 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
-// Permissão restrita: Apenas Dono ou Administrador do Discord
+// Permissão restrita: Apenas Dono do servidor ou Administrador do Discord
 function isDonoOuAdmin(interaction) {
   const isOwner = interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -734,7 +734,7 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
-// PAINEL PRINCIPAL COM CRÉDITO "Desenvolvido por Cetus"
+// PAINEL PRINCIPAL
 function gerarEmbedPainelPrincipal(guild) {
   const embed = new EmbedBuilder()
     .setTitle(config.painelTitulo)
@@ -746,6 +746,7 @@ function gerarEmbedPainelPrincipal(guild) {
       `• 🔍 Análise da candidatura\n` +
       `• 🎶🎤 Entrevista com a equipe\n` +
       `• ✅ Resultado final\n\n` +
+      `───────────────\n` +
       `🤖 Organizações • Roleplay | Desenvolvido por Cetus`
     )
     .setColor(config.painelCorHex);
@@ -771,7 +772,11 @@ function gerarBotaoFormularioComConfig() {
 function gerarEmbedMenuNavegacao() {
   return new EmbedBuilder()
     .setTitle('⚙️ Central de Configurações')
-    .setDescription('Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:')
+    .setDescription(
+      'Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:\n\n' +
+      '───────────────\n' +
+      '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+    )
     .setColor(config.painelCorHex);
 }
 
@@ -787,7 +792,8 @@ function gerarEmbedStatusConfiguracoes() {
       { name: '👮 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : 'Não definido', inline: false },
       { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
       { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
-      { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false }
+      { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false },
+      { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
 }
 
@@ -815,7 +821,8 @@ function gerarEmbedVisualTextos() {
     .addFields(
       { name: '📌 Título Atual', value: `\`${config.painelTitulo}\``, inline: false },
       { name: '🎨 Cor Lateral', value: `\`${config.painelCorNome}\``, inline: false },
-      { name: '🖼️ Banner Aprovado Atual', value: config.bannerAprovadoUrl ? `[Clique para ver o Banner](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false }
+      { name: '🖼️ Banner Aprovado Atual', value: config.bannerAprovadoUrl ? `[Clique para ver o Banner](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false },
+      { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
 }
 
@@ -851,7 +858,8 @@ function gerarEmbedCanaisCategoria() {
     .addFields(
       { name: '📁 Categoria dos recrutamentos', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: false },
       { name: '📄 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: false },
-      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: false }
+      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: false },
+      { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
 }
 
@@ -880,7 +888,8 @@ function gerarEmbedCargos() {
     .addFields(
       { name: '🎖️ Cargo de aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
       { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
-      { name: '🛡️ Cargo de recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false }
+      { name: '🛡️ Cargo de recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
 }
 
@@ -909,7 +918,8 @@ function gerarEmbedGerenciarPerguntas() {
     .setColor(config.painelCorHex)
     .addFields(
       { name: '⏱️ Tempo Atual por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
-      { name: `📋 Perguntas Cadastradas: ${config.perguntas.length}/20`, value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).` }
+      { name: `📋 Perguntas Cadastradas: ${config.perguntas.length}/20`, value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).` },
+      { name: '‎', value: '───────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
     );
 }
 
