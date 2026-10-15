@@ -1,311 +1,398 @@
-const { 
-    Client, 
-    GatewayIntentBits, 
-    Partials, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    EmbedBuilder, 
-    ChannelType, 
-    PermissionFlagsBits, 
-    ModalBuilder, 
-    TextInputBuilder, 
-    TextInputStyle, 
-    SlashCommandBuilder, 
-    REST, 
-    Routes 
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  RoleSelectMenuBuilder,
+  ChannelSelectMenuBuilder,
+  ChannelType,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  Events,
+  Partials
 } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ],
-    partials: [Partials.Channel, Partials.GuildMember, Partials.User]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
+  ],
+  partials: [Partials.Channel, Partials.Message]
 });
 
-// Arquivos de dados
-const configPath = path.join(__dirname, 'data', 'config.json');
-const ticketsPath = path.join(__dirname, 'data', 'tickets.json');
+// Cache local em memória (para o código de teste sem banco de dados)
+const config = {
+  relatorioChannelId: null,
+  anunciosChannelId: null,
+  cargosAprovar: [],
+  cargosRemover: [],
+  cargoRecrutador: null,
+  perguntas: [] // Máximo 20 perguntas configuráveis
+};
 
-function loadJSON(filePath) {
-    if (!fs.existsSync(filePath)) {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, JSON.stringify({}, null, 2));
+// Controle de sessões dos candidatos
+// userId -> { step: number, respostas: [], rgImageUrl: string }
+const sessoesCandidatos = new Map();
+
+client.once(Events.ClientReady, (c) => {
+  console.log(`🤖 Bot de recrutamento rodando em: ${c.user.tag}`);
+});
+
+// Interações do Bot
+client.on(Events.InteractionCreate, async (interaction) => {
+  // Comando Slash /painel
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'painel') {
+      await interaction.reply({
+        embeds: [gerarEmbedConfigGeral()],
+        components: gerarBotoesConfigGeral(),
+        ephemeral: true
+      });
     }
-    try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    } catch {
-        return {};
+    return;
+  }
+
+  // --- NAVEGAÇÃO E BOTÕES DO PAINEL ---
+  if (interaction.isButton()) {
+    const customId = interaction.customId;
+
+    // Enviar o painel oficial no canal
+    if (customId === 'enviar_painel_recrutamento') {
+      await interaction.channel.send({
+        embeds: [gerarEmbedPainelPrincipal()],
+        components: [gerarBotaoFormulario()]
+      });
+      return interaction.reply({ content: '✅ Painel de recrutamento enviado!', ephemeral: true });
     }
-}
 
-function saveJSON(filePath, data) {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
+    // Candidato clica em Formulário
+    if (customId === 'iniciar_formulario') {
+      sessoesCandidatos.set(interaction.user.id, {
+        step: 0, // 0 = RG
+        respostas: [],
+        rgImageUrl: null
+      });
 
-// Registro dos Comandos Slash
-const commands = [
-    new SlashCommandBuilder()
-        .setName('painel-administrativo')
-        .setDescription('Abre o painel de configuração do bot')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder()
-        .setName('setar-ticket')
-        .setDescription('Envia a mensagem com o botão de criação de ticket no canal atual')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-].map(cmd => cmd.toJSON());
-
-client.once('ready', async () => {
-    console.log(`Bot online como ${client.user.tag}`);
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    try {
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: commands }
+      try {
+        const dm = await interaction.user.createDM();
+        await dm.send(
+          '📌 **Etapa 1:** Por favor, envie a **foto do seu RG** aqui no chat privado para começar o formulário.'
         );
-        console.log('Comandos Slash registrados com sucesso!');
-    } catch (error) {
-        console.error('Erro ao registrar comandos:', error);
+        return interaction.reply({
+          content: '📬 Chamei você no privado! Dê uma olhada no seu PV.',
+          ephemeral: true
+        });
+      } catch (err) {
+        return interaction.reply({
+          content: '❌ Sua DM está fechada! Abra suas mensagens privadas para continuar.',
+          ephemeral: true
+        });
+      }
     }
+
+    // Navegação Interna do Painel (Usa .update() para a tela não sumir)
+    if (customId === 'menu_config_geral') {
+      return interaction.update({
+        embeds: [gerarEmbedConfigGeral()],
+        components: gerarBotoesConfigGeral()
+      });
+    }
+
+    if (customId === 'menu_definir_config') {
+      return interaction.update({
+        embeds: [gerarEmbedDefinirConfig()],
+        components: gerarSelectsDefinirConfig()
+      });
+    }
+
+    if (customId === 'menu_gerenciar_perguntas') {
+      return interaction.update({
+        embeds: [gerarEmbedGerenciarPerguntas()],
+        components: gerarBotoesGerenciarPerguntas()
+      });
+    }
+
+    // Modal para adicionar pergunta
+    if (customId === 'btn_add_pergunta') {
+      if (config.perguntas.length >= 20) {
+        return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId('modal_add_pergunta')
+        .setTitle('Adicionar Pergunta');
+
+      const inputPergunta = new TextInputBuilder()
+        .setCustomId('texto_pergunta')
+        .setLabel(`Pergunta #${config.perguntas.length + 1}`)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(inputPergunta));
+      return interaction.showModal(modal);
+    }
+
+    // Remover última pergunta
+    if (customId === 'btn_rem_pergunta') {
+      if (config.perguntas.length === 0) {
+        return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
+      }
+      config.perguntas.pop();
+      return interaction.update({
+        embeds: [gerarEmbedGerenciarPerguntas()],
+        components: gerarBotoesGerenciarPerguntas()
+      });
+    }
+
+    // Ver perguntas cadastradas
+    if (customId === 'btn_ver_perguntas') {
+      const lista = config.perguntas.map((p, i) => `**${i + 1}.** ${p}`).join('\n') || 'Nenhuma pergunta cadastrada.';
+      return interaction.reply({ content: `📋 **Perguntas Atuais:**\n\n${lista}`, ephemeral: true });
+    }
+
+    // Aprovar / Reprovar na aba de relatório
+    if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
+      const [acao, userId] = customId.split('_');
+      const member = await interaction.guild.members.fetch(userId).catch(() => null);
+
+      if (acao === 'aprovar') {
+        if (member && config.cargosAprovar.length > 0) {
+          await member.roles.add(config.cargosAprovar).catch(() => null);
+        }
+        if (member && config.cargosRemover.length > 0) {
+          await member.roles.remove(config.cargosRemover).catch(() => null);
+        }
+
+        const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
+          .setColor(0x2ecc71)
+          .setTitle('✅ Candidatura Aprovada')
+          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
+
+        await interaction.update({ embeds: [embedAtual], components: [] });
+
+        if (member) member.send('🎉 **Parabéns!** Sua candidatura foi **APROVADA**!').catch(() => null);
+      } else {
+        const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
+          .setColor(0xe74c3c)
+          .setTitle('❌ Candidatura Reprovada')
+          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });
+
+        await interaction.update({ embeds: [embedAtual], components: [] });
+
+        if (member) member.send('❌ Sua candidatura foi **REPROVADA**.').catch(() => null);
+      }
+    }
+  }
+
+  // --- SELEÇÃO DE MENUS E SELETORES (Sempre atualiza sem recriar mensagem) ---
+  if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
+    const customId = interaction.customId;
+
+    if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
+    if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
+    if (customId === 'select_cargos_aprovar') config.cargosAprovar = interaction.values;
+    if (customId === 'select_cargos_remover') config.cargosRemover = interaction.values;
+    if (customId === 'select_cargo_recrutador') config.cargoRecrutador = interaction.values[0];
+
+    return interaction.update({
+      embeds: [gerarEmbedDefinirConfig()],
+      components: gerarSelectsDefinirConfig()
+    });
+  }
+
+  // Submit de Modais
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'modal_add_pergunta') {
+      const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
+      config.perguntas.push(novaPergunta);
+
+      return interaction.update({
+        embeds: [gerarEmbedGerenciarPerguntas()],
+        components: gerarBotoesGerenciarPerguntas()
+      });
+    }
+  }
 });
 
-// Evento de Boas-Vindas
-client.on('guildMemberAdd', async (member) => {
-    const config = loadJSON(configPath);
-    
-    // Cargo Automático
-    if (config.autoRoleId) {
-        const role = member.guild.roles.cache.get(config.autoRoleId);
-        if (role) await member.roles.add(role).catch(err => console.error('Erro ao dar cargo:', err));
+// --- FLUXO DE PERGUNTAS E RG NO PRIVADO (DM) ---
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot || message.guild) return;
+
+  const sessao = sessoesCandidatos.get(message.author.id);
+  if (!sessao) return;
+
+  // Etapa 0: Envio da Foto do RG
+  if (sessao.step === 0) {
+    const anexo = message.attachments.first();
+    if (!anexo || !anexo.contentType?.startsWith('image/')) {
+      return message.reply('❌ Por favor, envie uma **imagem válida** contendo a foto do seu RG.');
     }
 
-    // Canal de Boas-Vindas
-    if (config.welcomeChannelId) {
-        const channel = member.guild.channels.cache.get(config.welcomeChannelId);
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setTitle(config.welcomeTitle || 'Bem-vindo(a)!')
-                .setDescription((config.welcomeDesc || 'Seja bem-vindo(a) ao servidor, {user}!').replace('{user}', member.toString()))
-                .setColor(config.welcomeColor || '#00FF00');
+    sessao.rgImageUrl = anexo.url;
+    sessao.step = 1;
 
-            if (config.welcomeImageUrl) embed.setImage(config.welcomeImageUrl);
-
-            await channel.send({ embeds: [embed] }).catch(console.error);
-        }
+    if (config.perguntas.length === 0) {
+      await enviarRelatorio(message.author, sessao);
+      sessoesCandidatos.delete(message.author.id);
+      return message.reply('✅ RG recebido! Seu formulário foi enviado para análise.');
     }
+
+    await message.reply(`✅ **RG Recebido!**\n\n**Pergunta 1/${config.perguntas.length}:**\n${config.perguntas[0]}`);
+    return;
+  }
+
+  // Etapa 1 até N: Perguntas sequenciais
+  if (sessao.step > 0 && sessao.step <= config.perguntas.length) {
+    sessao.respostas.push({
+      pergunta: config.perguntas[sessao.step - 1],
+      resposta: message.content
+    });
+
+    if (sessao.step < config.perguntas.length) {
+      const proxima = config.perguntas[sessao.step];
+      sessao.step += 1;
+      await message.reply(`**Pergunta ${sessao.step}/${config.perguntas.length}:**\n${proxima}`);
+    } else {
+      await enviarRelatorio(message.author, sessao);
+      sessoesCandidatos.delete(message.author.id);
+      await message.reply('🎉 **Formulário finalizado!** Todas as respostas foram enviadas para avaliação.');
+    }
+  }
 });
 
-// Evento de Saída
-client.on('guildMemberRemove', async (member) => {
-    const config = loadJSON(configPath);
+// Função para postar o relatório no canal configurado
+async function enviarRelatorio(user, sessao) {
+  if (!config.relatorioChannelId) return;
 
-    if (config.leaveChannelId) {
-        const channel = member.guild.channels.cache.get(config.leaveChannelId);
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setTitle(config.leaveTitle || 'Até logo!')
-                .setDescription((config.leaveDesc || '{user} saiu do servidor.').replace('{user}', member.user.tag))
-                .setColor(config.leaveColor || '#FF0000');
+  const canal = await client.channels.fetch(config.relatorioChannelId).catch(() => null);
+  if (!canal) return;
 
-            if (config.leaveImageUrl) embed.setImage(config.leaveImageUrl);
+  const embed = new EmbedBuilder()
+    .setTitle(`📝 Formulário de Recrutamento - ${user.username}`)
+    .setColor(0x2b2d31)
+    .setThumbnail(user.displayAvatarURL())
+    .setImage(sessao.rgImageUrl)
+    .addFields({ name: '👤 Candidato', value: `${user} (${user.id})` })
+    .setTimestamp();
 
-            await channel.send({ embeds: [embed] }).catch(console.error);
-        }
-    }
-});
+  sessao.respostas.forEach((r, idx) => {
+    embed.addFields({
+      name: `P${idx + 1}: ${r.pergunta}`,
+      value: r.resposta || '*Sem resposta*'
+    });
+  });
 
-// Tratamento de Interações
-client.on('interactionCreate', async (interaction) => {
-    
-    // 1. Comandos Slash
-    if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'painel-administrativo') {
-            const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cfg_welcome').setLabel('Boas-Vindas').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('cfg_leave').setLabel('Saída').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('cfg_autorole').setLabel('Cargo Auto').setStyle(ButtonStyle.Success)
-            );
-            const row2 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cfg_ticket').setLabel('Config Categoria Ticket').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('cfg_logs').setLabel('Config Canal Logs').setStyle(ButtonStyle.Danger)
-            );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
+  );
 
-            const embed = new EmbedBuilder()
-                .setTitle('⚙️ Painel Administrativo')
-                .setDescription('Selecione abaixo o módulo que deseja configurar:')
-                .setColor('#2F3136');
+  await canal.send({ embeds: [embed], components: [row] });
+}
 
-            await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
-        }
+// --- INTERFACES VISUAIS ---
 
-        if (interaction.commandName === 'setar-ticket') {
-            const embed = new EmbedBuilder()
-                .setTitle('🎫 Suporte via Ticket')
-                .setDescription('Clique no botão abaixo para abrir um ticket de atendimento privado.')
-                .setColor('#5865F2');
+function gerarEmbedConfigGeral() {
+  return new EmbedBuilder()
+    .setTitle('⚙️ Configuração do Recrutamento')
+    .setDescription('Gerencie o sistema de recrutamento através das opções abaixo.')
+    .setColor(0x2b2d31)
+    .addFields({
+      name: '⚙️ Configuração — status do sistema.',
+      value: `❓ **Perguntas** — gerencie as perguntas.\n⚙️ **Definir configurações** — altere os canais e cargos.`
+    });
+}
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('create_ticket')
-                    .setLabel('Abrir Ticket')
-                    .setEmoji('📩')
-                    .setStyle(ButtonStyle.Primary)
-            );
+function gerarBotoesConfigGeral() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('⚙️ Definir configurações').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('❓ Gerenciar perguntas').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('enviar_painel_recrutamento').setLabel('📤 Enviar Painel').setStyle(ButtonStyle.Success)
+    )
+  ];
+}
 
-            await interaction.channel.send({ embeds: [embed], components: [row] });
-            await interaction.reply({ content: 'Painel de tickets enviado com sucesso!', ephemeral: true });
-        }
-    }
+function gerarEmbedDefinirConfig() {
+  return new EmbedBuilder()
+    .setTitle('⚙️ Configurações do Sistema')
+    .setDescription('Confira abaixo o status atual do sistema.')
+    .setColor(0x2b2d31)
+    .addFields(
+      { name: '📢 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ Não definido' },
+      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ Não definido' },
+      { name: '👑 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ Não definido' },
+      { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Nenhum' },
+      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum' }
+    );
+}
 
-    // 2. Botões
-    if (interaction.isButton()) {
-        const config = loadJSON(configPath);
+function gerarSelectsDefinirConfig() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📢 Selecione o canal de anúncios').setChannelTypes(ChannelType.GuildText)
+    ),
+    new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione os cargos de aprovado').setMinValues(0).setMaxValues(5)
+    ),
+    new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_remover').setPlaceholder('🗑️ Selecione os cargos a remover').setMinValues(0).setMaxValues(5)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('⬅️ Voltar').setStyle(ButtonStyle.Secondary)
+    )
+  ];
+}
 
-        if (interaction.customId === 'cfg_welcome') {
-            const modal = new ModalBuilder().setCustomId('modal_welcome').setTitle('Configurar Boas-Vindas');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ch_id').setLabel('ID do Canal').setStyle(TextInputStyle.Short).setValue(config.welcomeChannelId || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setValue(config.welcomeTitle || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel('Descrição ({user} p/ mencionar)').setStyle(TextInputStyle.Paragraph).setValue(config.welcomeDesc || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('img').setLabel('URL da Imagem').setStyle(TextInputStyle.Short).setRequired(false).setValue(config.welcomeImageUrl || ''))
-            );
-            await interaction.showModal(modal);
-        }
+function gerarEmbedGerenciarPerguntas() {
+  return new EmbedBuilder()
+    .setTitle('❓ Gerenciar Perguntas')
+    .setDescription('Controle as perguntas utilizadas no formulário.')
+    .setColor(0x2b2d31)
+    .addFields({
+      name: `📋 Perguntas: ${config.perguntas.length}/20`,
+      value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).`
+    });
+}
 
-        if (interaction.customId === 'cfg_leave') {
-            const modal = new ModalBuilder().setCustomId('modal_leave').setTitle('Configurar Mensagem de Saída');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ch_id').setLabel('ID do Canal').setStyle(TextInputStyle.Short).setValue(config.leaveChannelId || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel('Título').setStyle(TextInputStyle.Short).setValue(config.leaveTitle || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel('Descrição').setStyle(TextInputStyle.Paragraph).setValue(config.leaveDesc || '')),
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('img').setLabel('URL da Imagem').setStyle(TextInputStyle.Short).setRequired(false).setValue(config.leaveImageUrl || ''))
-            );
-            await interaction.showModal(modal);
-        }
+function gerarBotoesGerenciarPerguntas() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('⬅️ Voltar').setStyle(ButtonStyle.Secondary)
+    )
+  ];
+}
 
-        if (interaction.customId === 'cfg_autorole') {
-            const modal = new ModalBuilder().setCustomId('modal_autorole').setTitle('Cargo Automático');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('role_id').setLabel('ID do Cargo para novos membros').setStyle(TextInputStyle.Short).setValue(config.autoRoleId || ''))
-            );
-            await interaction.showModal(modal);
-        }
+function gerarEmbedPainelPrincipal() {
+  return new EmbedBuilder()
+    .setTitle('📋 Central de Recrutamento')
+    .setDescription('Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.')
+    .setColor(0x2b2d31)
+    .addFields({
+      name: '✔️ Etapas do Processo',
+      value: '☑️ **Preenchimento do formulário**\n⏱️ Você terá **1 minuto** para responder cada pergunta\n🔍 Análise da candidatura\n🎙️ Entrevista com a equipe\n✅ Resultado final'
+    })
+    .setFooter({ text: 'Organizações • Roleplay' });
+}
 
-        if (interaction.customId === 'cfg_ticket') {
-            const modal = new ModalBuilder().setCustomId('modal_ticket').setTitle('Configurar Categoria de Tickets');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cat_id').setLabel('ID da Categoria').setStyle(TextInputStyle.Short).setValue(config.ticketCategoryId || ''))
-            );
-            await interaction.showModal(modal);
-        }
-
-        if (interaction.customId === 'cfg_logs') {
-            const modal = new ModalBuilder().setCustomId('modal_logs').setTitle('Configurar Canal de Logs');
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('logs_id').setLabel('ID do Canal de Logs').setStyle(TextInputStyle.Short).setValue(config.logsChannelId || ''))
-            );
-            await interaction.showModal(modal);
-        }
-
-        // Criar Ticket
-        if (interaction.customId === 'create_ticket') {
-            const guild = interaction.guild;
-            const user = interaction.user;
-
-            try {
-                const ticketChannel = await guild.channels.create({
-                    name: `ticket-${user.username}`,
-                    type: ChannelType.GuildText,
-                    parent: config.ticketCategoryId || null,
-                    permissionOverwrites: [
-                        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles] },
-                        { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
-                    ]
-                });
-
-                const tickets = loadJSON(ticketsPath);
-                if (!Array.isArray(tickets.list)) tickets.list = [];
-                tickets.list.push({ channelId: ticketChannel.id, userId: user.id, status: 'open' });
-                saveJSON(ticketsPath, tickets);
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`Ticket de ${user.username}`)
-                    .setDescription('Aguarde o atendimento. Clique no botão abaixo para fechar o ticket.')
-                    .setColor('#2F3136');
-
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('close_ticket').setLabel('Fechar Ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger)
-                );
-
-                await ticketChannel.send({ content: `${user}`, embeds: [embed], components: [row] });
-                await interaction.reply({ content: `Seu ticket foi criado: ${ticketChannel}`, ephemeral: true });
-            } catch (err) {
-                console.error('Erro ao criar ticket:', err);
-                await interaction.reply({ content: 'Ocorreu um erro ao criar o ticket. Verifique as permissões do bot ou se o ID da categoria está correto.', ephemeral: true });
-            }
-        }
-
-        // Fechar Ticket
-        if (interaction.customId === 'close_ticket') {
-            await interaction.reply('Este ticket será fechado em 5 segundos...');
-            setTimeout(async () => {
-                const tickets = loadJSON(ticketsPath);
-                if (Array.isArray(tickets.list)) {
-                    tickets.list = tickets.list.filter(t => t.channelId !== interaction.channel.id);
-                    saveJSON(ticketsPath, tickets);
-                }
-                await interaction.channel.delete().catch(err => console.error('Erro ao deletar canal:', err));
-            }, 5000);
-        }
-    }
-
-    // 3. Modais
-    if (interaction.isModalSubmit()) {
-        const config = loadJSON(configPath);
-
-        if (interaction.customId === 'modal_welcome') {
-            config.welcomeChannelId = interaction.fields.getTextInputValue('ch_id');
-            config.welcomeTitle = interaction.fields.getTextInputValue('title');
-            config.welcomeDesc = interaction.fields.getTextInputValue('desc');
-            config.welcomeImageUrl = interaction.fields.getTextInputValue('img');
-            saveJSON(configPath, config);
-            await interaction.reply({ content: 'Configuração de Boas-Vindas salva!', ephemeral: true });
-        }
-
-        if (interaction.customId === 'modal_leave') {
-            config.leaveChannelId = interaction.fields.getTextInputValue('ch_id');
-            config.leaveTitle = interaction.fields.getTextInputValue('title');
-            config.leaveDesc = interaction.fields.getTextInputValue('desc');
-            config.leaveImageUrl = interaction.fields.getTextInputValue('img');
-            saveJSON(configPath, config);
-            await interaction.reply({ content: 'Configuração de Saída salva!', ephemeral: true });
-        }
-
-        if (interaction.customId === 'modal_autorole') {
-            config.autoRoleId = interaction.fields.getTextInputValue('role_id');
-            saveJSON(configPath, config);
-            await interaction.reply({ content: 'Cargo automático salvo!', ephemeral: true });
-        }
-
-        if (interaction.customId === 'modal_ticket') {
-            config.ticketCategoryId = interaction.fields.getTextInputValue('cat_id');
-            saveJSON(configPath, config);
-            await interaction.reply({ content: 'Categoria de Tickets salva!', ephemeral: true });
-        }
-
-        if (interaction.customId === 'modal_logs') {
-            config.logsChannelId = interaction.fields.getTextInputValue('logs_id');
-            saveJSON(configPath, config);
-            await interaction.reply({ content: 'Canal de Logs salvo!', ephemeral: true });
-        }
-    }
-});
+function gerarBotaoFormulario() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('📝 Formulário').setStyle(ButtonStyle.Secondary)
+  );
+}
 
 client.login(process.env.DISCORD_TOKEN);
