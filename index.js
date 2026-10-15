@@ -29,47 +29,82 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
-// Armazenamento temporário em memória das configurações
+// Cache local em memória
 const config = {
   relatorioChannelId: null,
   anunciosChannelId: null,
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  perguntas: [] // Até 20 perguntas configuráveis
+  perguntas: []
 };
 
-// Controle de sessões dos candidatos (userId -> { step, respostas, rgImageUrl })
 const sessoesCandidatos = new Map();
 
-// Registro automático de Slash Commands e Inicialização
+// --- DIAGNÓSTICO E REGISTRO AUTOMÁTICO AO INICIAR ---
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Bot de recrutamento online como: ${c.user.tag}`);
+  console.log('==================================================');
+  console.log(`🤖 BOT CONECTADO: ${c.user.tag} (ID: ${c.user.id})`);
+  
+  // 1. Diagnóstico de Variáveis
+  const cleanClientId = process.env.CLIENT_ID ? process.env.CLIENT_ID.trim() : null;
+  const cleanToken = process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.trim() : null;
 
-  try {
-    const commands = [
-      new SlashCommandBuilder()
-        .setName('painel')
-        .setDescription('Abre o painel de configuração do recrutamento')
-    ].map(command => command.toJSON());
-
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-    // DICA: Se quiser que o comando apareça INSTANTANEAMENTE no seu servidor de teste,
-    // substitua a linha abaixo colando o ID do seu servidor no local indicado:
-    // await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, 'ID_DO_SEU_SERVIDOR_AQUI'), { body: commands });
-
-    console.log('🔄 Registrando comando /painel...');
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log('✅ Comando /painel registrado com sucesso!');
-  } catch (error) {
-    console.error('❌ Erro ao registrar o comando /painel:', error);
+  console.log(`🔍 [CHECK 1] CLIENT_ID detectado: "${cleanClientId}"`);
+  if (!cleanClientId || cleanClientId.length < 15) {
+    console.error('❌ [ERRO CRÍTICO] CLIENT_ID está ausente ou é inválido nas variáveis da Discloud!');
+    return;
   }
+
+  // 2. Diagnóstico de Servidores onde o bot está
+  const guilds = client.guilds.cache;
+  console.log(`🏰 [CHECK 2] O bot está presente em ${guilds.size} servidor(es):`);
+  guilds.forEach(g => console.log(`   - ${g.name} (ID: ${g.id})`));
+
+  if (guilds.size === 0) {
+    console.warn('⚠️ [ATENÇÃO] O bot não está em nenhum servidor! Adicione o bot ao seu servidor primeiro.');
+    return;
+  }
+
+  // 3. Estrutura do Comando
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('painel')
+      .setDescription('Abre o painel de configuração do recrutamento')
+  ].map(cmd => cmd.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(cleanToken);
+
+  // 4. Tentativa 1: Registro em cada servidor individualmente (Aparece NA HORA)
+  for (const [guildId, guild] of guilds) {
+    try {
+      console.log(`🔄 Registrando comando /painel no servidor: "${guild.name}" (${guildId})...`);
+      await rest.put(
+        Routes.applicationGuildCommands(cleanClientId, guildId),
+        { body: commands }
+      );
+      console.log(`✅ [SUCESSO] Comando /painel registrado com SUCESSO no servidor "${guild.name}"!`);
+    } catch (err) {
+      console.error(`❌ [FALHA] Não foi possível registrar no servidor "${guild.name}":`, err.message);
+    }
+  }
+
+  // 5. Tentativa 2: Registro Global
+  try {
+    console.log('🔄 Registrando comando /painel Globalmente...');
+    await rest.put(
+      Routes.applicationCommands(cleanClientId),
+      { body: commands }
+    );
+    console.log('✅ [SUCESSO] Comando /painel registrado Globalmente!');
+  } catch (err) {
+    console.error('❌ [FALHA] Erro no registro global:', err.message);
+  }
+  console.log('==================================================');
 });
 
-// Gerenciamento de Interações
+// INTERAÇÕES
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Comando Slash /painel
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'painel') {
       await interaction.reply({
@@ -81,11 +116,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // Interações de Botões
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // Enviar o painel oficial para o canal
     if (customId === 'enviar_painel_recrutamento') {
       await interaction.channel.send({
         embeds: [gerarEmbedPainelPrincipal()],
@@ -94,10 +127,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: '✅ Painel de recrutamento enviado no canal!', ephemeral: true });
     }
 
-    // Candidato clica no botão "Formulário"
     if (customId === 'iniciar_formulario') {
       sessoesCandidatos.set(interaction.user.id, {
-        step: 0, // 0 = Aguardando foto do RG
+        step: 0,
         respostas: [],
         rgImageUrl: null
       });
@@ -119,7 +151,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // Navegação Interna (interaction.update mantém o painel aberto sem sumir)
     if (customId === 'menu_config_geral') {
       return interaction.update({
         embeds: [gerarEmbedConfigGeral()],
@@ -141,7 +172,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Adicionar pergunta (Modal)
     if (customId === 'btn_add_pergunta') {
       if (config.perguntas.length >= 20) {
         return interaction.reply({ content: '❌ Limite máximo de 20 perguntas atingido!', ephemeral: true });
@@ -161,7 +191,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // Remover última pergunta
     if (customId === 'btn_rem_pergunta') {
       if (config.perguntas.length === 0) {
         return interaction.reply({ content: '❌ Não há nenhuma pergunta para remover.', ephemeral: true });
@@ -173,13 +202,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Listar perguntas cadastradas
     if (customId === 'btn_ver_perguntas') {
       const lista = config.perguntas.map((p, i) => `**${i + 1}.** ${p}`).join('\n') || 'Nenhuma pergunta cadastrada.';
       return interaction.reply({ content: `📋 **Perguntas Atuais:**\n\n${lista}`, ephemeral: true });
     }
 
-    // Aprovação / Reprovação na aba de Relatório
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const [acao, userId] = customId.split('_');
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -213,7 +240,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // Interações de Menus Seletores (Atualiza mantendo o painel aberto)
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
     const customId = interaction.customId;
 
@@ -229,7 +255,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // Envio de Modais
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
@@ -243,14 +268,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Fluxo de Mensagens no Privado (DM)
+// FLUXO DE DM
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || message.guild) return;
 
   const sessao = sessoesCandidatos.get(message.author.id);
   if (!sessao) return;
 
-  // Etapa 0: Receber a imagem do RG
   if (sessao.step === 0) {
     const anexo = message.attachments.first();
     if (!anexo || !anexo.contentType?.startsWith('image/')) {
@@ -270,7 +294,6 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // Etapas 1 a N: Responder às perguntas em sequência
   if (sessao.step > 0 && sessao.step <= config.perguntas.length) {
     sessao.respostas.push({
       pergunta: config.perguntas[sessao.step - 1],
@@ -289,7 +312,6 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// Função para enviar o relatório completo no canal configurado
 async function enviarRelatorio(user, sessao) {
   if (!config.relatorioChannelId) return;
 
@@ -319,7 +341,6 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ embeds: [embed], components: [row] });
 }
 
-// Construtores de Embeds e Componentes
 function gerarEmbedConfigGeral() {
   return new EmbedBuilder()
     .setTitle('⚙️ Configuração do Recrutamento')
