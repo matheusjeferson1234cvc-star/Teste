@@ -39,8 +39,8 @@ const config = {
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  tempoPerguntaMs: 60000,
-  tempoPerguntaTexto: '1 minuto',
+  tempoPerguntaMs: 180000,
+  tempoPerguntaTexto: '3 minutos',
   perguntas: [],
   painelTitulo: '📋 │ Central de Recrutamento',
   painelDescricao: 'Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.',
@@ -51,7 +51,7 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
-// Atualização automática do painel público
+// Sincroniza o painel público automaticamente
 async function sincronizarPainelPublico(guild) {
   if (!config.painelChannelId || !config.painelMessageId) return;
 
@@ -99,6 +99,7 @@ async function avancarPergunta(channelId, channel, user) {
   }
 }
 
+// TIMER COM EXPIRAÇÃO NO PV ESTILIZADA
 function iniciarTimerPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -106,19 +107,25 @@ function iniciarTimerPergunta(channelId, channel, user) {
   sessao.timer = setTimeout(async () => {
     if (!sessoesCandidatos.has(channelId)) return;
 
-    if (sessao.step === 0) {
-      sessao.rgImageUrl = null;
-      await channel.send('⚠️ **Tempo de envio do RG esgotado!** Avançando sem foto...');
-    } else {
-      const perguntaAtual = config.perguntas[sessao.step - 1];
-      sessao.respostas.push({
-        pergunta: perguntaAtual,
-        resposta: '⚠️ *Tempo esgotado (não respondeu)*'
-      });
-      await channel.send(`⚠️ **Tempo esgotado para a Pergunta ${sessao.step}!** Pergunta anulada.`);
-    }
+    sessoesCandidatos.delete(channelId);
 
-    await avancarPergunta(channelId, channel, user);
+    const embedExpirado = new EmbedBuilder()
+      .setTitle('⏰ Recrutamento expirado')
+      .setDescription(
+        'Olá! Seu recrutamento foi **encerrado por inatividade**.\n\n' +
+        `⏰ Você não respondeu a pergunta em até **${config.tempoPerguntaTexto}**.\n` +
+        '🗑️ O canal do recrutamento foi fechado.\n\n' +
+        'Se ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀'
+      )
+      .setColor(0xe74c3c);
+
+    await user.send({ embeds: [embedExpirado] }).catch(() => null);
+
+    await channel.send('⚠️ **Recrutamento expirado por inatividade!** Fechando o canal em 5 segundos...');
+    setTimeout(() => {
+      channel.delete().catch(() => null);
+    }, 5000);
+
   }, config.tempoPerguntaMs);
 }
 
@@ -170,9 +177,10 @@ client.once(Events.ClientReady, async (c) => {
 
 // Interações do Bot
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Executou /recrutamento ou /painel -> Publica o Painel DIRETO no canal
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'recrutamento' || interaction.commandName === 'painel') {
+      await interaction.deferReply({ ephemeral: true });
+
       const msg = await interaction.channel.send({
         embeds: [gerarEmbedPainelPrincipal(interaction.guild)],
         components: [gerarBotaoFormularioComConfig()]
@@ -181,7 +189,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       config.painelChannelId = msg.channel.id;
       config.painelMessageId = msg.id;
 
-      return interaction.reply({ content: '✅ Painel de recrutamento enviado diretamente para este canal!', ephemeral: true });
+      return interaction.editReply({ content: '✅ Painel enviado com sucesso.' });
     }
     return;
   }
@@ -302,6 +310,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
     }
 
+    // APROVAÇÃO E REPROVAÇÃO COM EMBED NO PV IDÊNTICA
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const [acao, userId] = customId.split('_');
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -313,22 +322,43 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0x2ecc71)
           .setTitle('✅ Candidatura Aprovada')
-          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
+          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });  await interaction.update({ embeds: [embedAtual], components: [] });  if (member) { const embedPvAprovado = new EmbedBuilder() .setTitle('🎉 Recrutamento Aprovado') .setDescription( 'Parabéns! Seu recrutamento foi **aprovado**.\n\n' + 'Você foi aceito na organização.\n\n' + '📌 **Resultado**\n🟢 Aprovado\n\n' + `🏢 **Servidor**\n${interaction.guild.name}`
+            )
+            .setColor(0x2ecc71)
+            .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Álvaro' });
 
-        await interaction.update({ embeds: [embedAtual], components: [] });
-        if (member) member.send('🎉 **Parabéns!** Sua candidatura foi **APROVADA**!').catch(() => null);
+          member.send({ embeds: [embedPvAprovado] }).catch(() => null);
+        }
+
+        if (config.anunciosChannelId) {
+          const canalAnuncios = await interaction.guild.channels.fetch(config.anunciosChannelId).catch(() => null);
+          if (canalAnuncios) {
+            const embedAviso = new EmbedBuilder()
+              .setTitle('🎉 Novo Integrante Aprovado!')
+              .setDescription(`O candidato <@${userId}> foi **APROVADO** no recrutamento!`)
+              .setColor(0x2ecc71)
+              .setTimestamp();
+
+            await canalAnuncios.send({ content: `👏 Parabéns <@${userId}>!`, embeds: [embedAviso] });
+          }
+        }
+
       } else {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0xe74c3c)
           .setTitle('❌ Candidatura Reprovada')
-          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });
+          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });  await interaction.update({ embeds: [embedAtual], components: [] });  if (member) { const embedPvReprovado = new EmbedBuilder() .setTitle('❌ Recrutamento Reprovado') .setDescription( 'Agradecemos o envio do seu formulário.\n\n' + 'Sua candidatura foi **reprovada** pela gerência.\n\n' + '📌 **Resultado**\n🔴 Reprovado\n\n' + `🏢 **Servidor**\n${interaction.guild.name}`
+            )
+            .setColor(0xe74c3c)
+            .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Álvaro' });
 
-        await interaction.update({ embeds: [embedAtual], components: [] });
-        if (member) member.send('❌ Sua candidatura foi **REPROVADA**.').catch(() => null);
+          member.send({ embeds: [embedPvReprovado] }).catch(() => null);
+        }
       }
     }
   }
 
+  // TRATAMENTO DOS MENUS DE SELEÇÃO CORRIGIDOS
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
     const customId = interaction.customId;
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
@@ -344,11 +374,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const tempoMinutos = valorMs / 60000;
       if (tempoMinutos < 1) {
-        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`;
-      } else if (tempoMinutos === 1) {
-        config.tempoPerguntaTexto = '1 minuto';
-      } else {
-        config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
+        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`; } else if (tempoMinutos === 1) { config.tempoPerguntaTexto = '1 minuto'; } else { config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
       }
     }
 
@@ -380,36 +406,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const guild = interaction.guild;
       const user = interaction.user;
 
-      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-
-      try {
-        const permissionOverwrites = [
-          { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] }
-        ];
-
-        if (config.cargoRecrutador) {
-          permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
-        }
-
-        const canalTicket = await guild.channels.create({
-          name: canalNome,
-          type: ChannelType.GuildText,
-          parent: config.categoriaId || null,
-          permissionOverwrites
-        });
-
-        sessoesCandidatos.set(canalTicket.id, {
-          userId: user.id,
-          nomeIdPersonagem: nomeId,
-          step: 0,
-          respostas: [],
-          rgImageUrl: null,
-          timer: null
-        });
-
-        await canalTicket.send({
-          content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
+      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;  try { const permissionOverwrites = [ { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] }, { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] } ];  if (config.cargoRecrutador) { permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }); }  const canalParams = { name: canalNome, type: ChannelType.GuildText, permissionOverwrites };  if (config.categoriaId) { canalParams.parent = config.categoriaId; }  const canalTicket = await guild.channels.create(canalParams);  sessoesCandidatos.set(canalTicket.id, { userId: user.id, nomeIdPersonagem: nomeId, step: 0, respostas: [], rgImageUrl: null, timer: null });  await canalTicket.send({ content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
         });
 
         iniciarTimerPergunta(canalTicket.id, canalTicket, user);
@@ -467,23 +464,12 @@ async function enviarRelatorio(user, sessao) {
     .setThumbnail(user.displayAvatarURL({ dynamic: true }))
     .setImage(sessao.rgImageUrl)
     .addFields(
-      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
-      { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
-      { name: '‎', value: '─── **Perguntas & Respostas** ───' }
-    )
-    .setTimestamp()
-    .setFooter({ text: 'Sistema de Aprovação • Cetus' });
-
-  sessao.respostas.forEach((r, idx) => {
-    embed.addFields({
-      name: `❓ P${idx + 1}:${r.pergunta}`,
-      value: `> ${r.resposta || '*Sem resposta*'}`
+      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true }, { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true }, { name: '‎', value: '─── **Perguntas & Respostas** ───' } ) .setTimestamp() .setFooter({ text: 'Sistema de Aprovação • Cetus' });  sessao.respostas.forEach((r, idx) => { embed.addFields({ name: `❓ P${idx + 1}: ${r.pergunta}`, value: `> ${r.resposta || '*Sem resposta*'}`
     });
   });
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
   );
 
   await canal.send({ embeds: [embed], components: [row] });
@@ -526,24 +512,21 @@ function gerarBotaoFormularioComConfig() {
 function gerarEmbedConfigGeral() {
   return new EmbedBuilder()
     .setTitle('⚙️ Configuração do Recrutamento')
-    .setDescription('Gerencie o sistema de recrutamento através das opções abaixo.')
-    .setColor(0x2b2d31)
-    .addFields({
-      name: '📌 Menu de Navegação',
-      value: 
-        '⚙️ **Configuração** — visualize o status atual dos canais/cargos.\n' +
-        '🛠️ **Definir configurações** — altere canais, cargos, tempo e personalize o visual/banner.\n' +
-        '❓ **Gerenciar perguntas** — adicione ou remova as perguntas do formulário.'
-    })
-    .setFooter({ text: 'Sistema Admin • Cetus' });
+    .setDescription(
+      'Gerencie o sistema de recrutamento através das opções abaixo.\n\n' +
+      '⚙️ **Configuração** — visualize o status atual.\n' +
+      '❓ **Perguntas** — gerencie as perguntas.\n' +
+      '🛠️ **Definir configurações** — altere os canais e cargos do sistema.'
+    )
+    .setColor(0x2b2d31);
 }
 
 function gerarBotoesConfigGeral() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('⚙️ Configuração').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('🛠️ Definir configurações').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('❓ Gerenciar perguntas').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Configuração').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Gerenciar perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
@@ -556,30 +539,28 @@ function gerarEmbedDefinirConfig() {
     .addFields(
       { name: '🎨 Título do Painel', value: `\`${config.painelTitulo}\``, inline: false },
       { name: '🖼️ Banner do Topo', value: config.painelBannerUrl ? `[Clique para ver o banner](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
-      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
-      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo Aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true }, { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal Anúncios/Avisos', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true }, { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }, { name: '🚫 Cargo a Remover (Tirar)', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
       { name: '⏱️ Tempo p/ Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false }
     );
 }
 
+// ORGANIZAÇÃO DOS SELECTS DENTRO DO LIMITE DE 5 ACTIONROWS
 function gerarSelectsDefinirConfig() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('🎨 Editar Textos & Banner').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('🎨 Editar Textos & Banner').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a categoria').setChannelTypes(ChannelType.GuildCategory)
+      new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a Categoria do Ticket').setChannelTypes(ChannelType.GuildCategory)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o cargo de Recrutador')
-    ),
-    new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o cargo de Aprovado').setMinValues(0).setMaxValues(5)
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -587,15 +568,11 @@ function gerarSelectsDefinirConfig() {
         .setPlaceholder('⏱️ Selecione o tempo por pergunta')
         .addOptions([
           { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
-          { label: '1 Minuto (Padrão)', value: '60000', description: '1 minuto por pergunta' },
-          { label: '2 Minutos', value: '120000', description: '2 minutos por pergunta' },
-          { label: '3 Minutos', value: '180000', description: '3 minutos por pergunta' },
+          { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
+          { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
           { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
           { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
         ])
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
