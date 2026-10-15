@@ -99,7 +99,6 @@ async function avancarPergunta(channelId, channel, user) {
   }
 }
 
-// TIMER COM EXPIRAÇÃO NO PV ESTILIZADA
 function iniciarTimerPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -222,7 +221,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'menu_config_geral') {
-      return interaction.update({ embeds: [gerarEmbedConfigGeral()], components: gerarBotoesConfigGeral() });
+      return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral() });
+    }
+
+    if (customId === 'menu_visual_textos') {
+      return interaction.update({ embeds: [gerarEmbedVisualTextos()], components: gerarBotoesVisualTextos() });
     }
 
     if (customId === 'menu_definir_config') {
@@ -236,7 +239,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId === 'btn_editar_painel') {
       const modal = new ModalBuilder()
         .setCustomId('modal_editar_painel')
-        .setTitle('Personalizar Painel');
+        .setTitle('Personalizar Título, Descrição & Banner');
 
       const inputTitulo = new TextInputBuilder()
         .setCustomId('p_titulo')
@@ -254,8 +257,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const inputBanner = new TextInputBuilder()
         .setCustomId('p_banner')
-        .setLabel('URL da Imagem / Banner do Topo')
-        .setPlaceholder('https://...')
+        .setLabel('URL do Banner / GIF (Image Link)')
+        .setPlaceholder('https://i.imgur.com/example.gif')
         .setValue(config.painelBannerUrl || '')
         .setStyle(TextInputStyle.Short)
         .setRequired(false);
@@ -296,7 +299,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'btn_ver_perguntas') {
-      const embedPerguntas = new EmbedBuilder().setTitle('📋 Perguntas do Recrutamento').setColor(0x2b2d31);
+      const embedPerguntas = new EmbedBuilder().setTitle('📋 Perguntas do Recrutamento').setColor(0xe74c3c);
       if (config.perguntas.length === 0) {
         embedPerguntas.setDescription('❌ **Nenhuma pergunta cadastrada.**');
       } else {
@@ -310,7 +313,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
     }
 
-    // APROVAÇÃO E REPROVAÇÃO COM EMBED NO PV IDÊNTICA
+    // APROVAÇÃO E REPROVAÇÃO
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const [acao, userId] = customId.split('_');
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -322,7 +325,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0x2ecc71)
           .setTitle('✅ Candidatura Aprovada')
-          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });  await interaction.update({ embeds: [embedAtual], components: [] });  if (member) { const embedPvAprovado = new EmbedBuilder() .setTitle('🎉 Recrutamento Aprovado') .setDescription( 'Parabéns! Seu recrutamento foi **aprovado**.\n\n' + 'Você foi aceito na organização.\n\n' + '📌 **Resultado**\n🟢 Aprovado\n\n' + `🏢 **Servidor**\n${interaction.guild.name}`
+          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
+
+        await interaction.update({ embeds: [embedAtual], components: [] });
+
+        if (member) {
+          const embedPvAprovado = new EmbedBuilder()
+            .setTitle('🎉 Recrutamento Aprovado')
+            .setDescription(
+              'Parabéns! Seu recrutamento foi **aprovado**.\n\n' +
+              'Você foi aceito na organização.\n\n' +
+              '📌 **Resultado**\n🟢 Aprovado\n\n' +
+              `🏢 **Servidor**\n${interaction.guild.name}`
             )
             .setColor(0x2ecc71)
             .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Álvaro' });
@@ -347,7 +361,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0xe74c3c)
           .setTitle('❌ Candidatura Reprovada')
-          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });  await interaction.update({ embeds: [embedAtual], components: [] });  if (member) { const embedPvReprovado = new EmbedBuilder() .setTitle('❌ Recrutamento Reprovado') .setDescription( 'Agradecemos o envio do seu formulário.\n\n' + 'Sua candidatura foi **reprovada** pela gerência.\n\n' + '📌 **Resultado**\n🔴 Reprovado\n\n' + `🏢 **Servidor**\n${interaction.guild.name}`
+          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });
+
+        await interaction.update({ embeds: [embedAtual], components: [] });
+
+        if (member) {
+          const embedPvReprovado = new EmbedBuilder()
+            .setTitle('❌ Recrutamento Reprovado')
+            .setDescription(
+              'Agradecemos o envio do seu formulário.\n\n' +
+              'Sua candidatura foi **reprovada** pela gerência.\n\n' +
+              '📌 **Resultado**\n🔴 Reprovado\n\n' +
+              `🏢 **Servidor**\n${interaction.guild.name}`
             )
             .setColor(0xe74c3c)
             .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Álvaro' });
@@ -358,14 +383,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // TRATAMENTO DOS MENUS DE SELEÇÃO CORRIGIDOS
+  // MENUS DE SELEÇÃO
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
     const customId = interaction.customId;
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
     if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
     if (customId === 'select_cargos_aprovar') config.cargosAprovar = interaction.values;
-    if (customId === 'select_cargos_remover') config.cargosRemover = interaction.values;
     if (customId === 'select_cargo_recrutador') config.cargoRecrutador = interaction.values[0];
 
     if (customId === 'select_tempo_pergunta') {
@@ -374,8 +398,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const tempoMinutos = valorMs / 60000;
       if (tempoMinutos < 1) {
-        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`; } else if (tempoMinutos === 1) { config.tempoPerguntaTexto = '1 minuto'; } else { config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
+        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`;
+      } else if (tempoMinutos === 1) {
+        config.tempoPerguntaTexto = '1 minuto';
+      } else {
+        config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
       }
+
+      await sincronizarPainelPublico(interaction.guild);
+      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
     await sincronizarPainelPublico(interaction.guild);
@@ -390,7 +421,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       config.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
 
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
+      return interaction.update({ embeds: [gerarEmbedVisualTextos()], components: gerarBotoesVisualTextos() });
     }
 
     if (interaction.customId === 'modal_add_pergunta') {
@@ -406,7 +437,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const guild = interaction.guild;
       const user = interaction.user;
 
-      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;  try { const permissionOverwrites = [ { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] }, { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] } ];  if (config.cargoRecrutador) { permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }); }  const canalParams = { name: canalNome, type: ChannelType.GuildText, permissionOverwrites };  if (config.categoriaId) { canalParams.parent = config.categoriaId; }  const canalTicket = await guild.channels.create(canalParams);  sessoesCandidatos.set(canalTicket.id, { userId: user.id, nomeIdPersonagem: nomeId, step: 0, respostas: [], rgImageUrl: null, timer: null });  await canalTicket.send({ content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
+      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+      try {
+        const permissionOverwrites = [
+          { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] }
+        ];
+
+        if (config.cargoRecrutador) {
+          permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
+        }
+
+        const canalParams = {
+          name: canalNome,
+          type: ChannelType.GuildText,
+          permissionOverwrites
+        };
+
+        if (config.categoriaId) {
+          canalParams.parent = config.categoriaId;
+        }
+
+        const canalTicket = await guild.channels.create(canalParams);
+
+        sessoesCandidatos.set(canalTicket.id, {
+          userId: user.id,
+          nomeIdPersonagem: nomeId,
+          step: 0,
+          respostas: [],
+          rgImageUrl: null,
+          timer: null
+        });
+
+        await canalTicket.send({
+          content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
         });
 
         iniciarTimerPergunta(canalTicket.id, canalTicket, user);
@@ -460,16 +525,27 @@ async function enviarRelatorio(user, sessao) {
 
   const embed = new EmbedBuilder()
     .setTitle(`📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}`)
-    .setColor(0x2b2d31)
+    .setColor(0xe74c3c)
     .setThumbnail(user.displayAvatarURL({ dynamic: true }))
     .setImage(sessao.rgImageUrl)
     .addFields(
-      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true }, { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true }, { name: '‎', value: '─── **Perguntas & Respostas** ───' } ) .setTimestamp() .setFooter({ text: 'Sistema de Aprovação • Cetus' });  sessao.respostas.forEach((r, idx) => { embed.addFields({ name: `❓ P${idx + 1}: ${r.pergunta}`, value: `> ${r.resposta || '*Sem resposta*'}`
+      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
+      { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
+      { name: '‎', value: '─── **Perguntas & Respostas** ───' }
+    )
+    .setTimestamp()
+    .setFooter({ text: 'Sistema de Aprovação • Cetus' });
+
+  sessao.respostas.forEach((r, idx) => {
+    embed.addFields({
+      name: `❓ P${idx + 1}:${r.pergunta}`,
+      value: `> ${r.resposta || '*Sem resposta*'}`
     });
   });
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
   );
 
   await canal.send({ embeds: [embed], components: [row] });
@@ -479,7 +555,7 @@ function gerarEmbedPainelPrincipal(guild) {
   const embed = new EmbedBuilder()
     .setTitle(config.painelTitulo)
     .setDescription(config.painelDescricao)
-    .setColor(0x2b2d31)
+    .setColor(0xe74c3c)
     .addFields({
       name: '🛡️ Etapas do Processo',
       value: 
@@ -511,46 +587,91 @@ function gerarBotaoFormularioComConfig() {
 
 function gerarEmbedConfigGeral() {
   return new EmbedBuilder()
-    .setTitle('⚙️ Configuração do Recrutamento')
+    .setTitle('⚙️ Painel de Configurações do Recrutamento')
     .setDescription(
-      'Gerencie o sistema de recrutamento através das opções abaixo.\n\n' +
-      '⚙️ **Configuração** — visualize o status atual.\n' +
-      '❓ **Perguntas** — gerencie as perguntas.\n' +
-      '🛠️ **Definir configurações** — altere os canais e cargos do sistema.'
+      'Navegue entre as opções abaixo para personalizar o bot:\n\n' +
+      '⚙️ **Configuração** — Visualize o resumo de tudo o que está configurado.\n' +
+      '🎨 **Visual & Textos** — Edite o título, descrição e imagem/GIF do painel público.\n' +
+      '🛠️ **Definir configurações** — Defina canais (relatórios, categoria) e cargos.\n' +
+      '❓ **Gerenciar perguntas** — Adicione perguntas e altere o tempo por pergunta.'
     )
-    .setColor(0x2b2d31);
+    .setColor(0xe74c3c);
 }
 
 function gerarBotoesConfigGeral() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Configuração').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('menu_visual_textos').setLabel('Visual & Textos').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Gerenciar perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
 
-function gerarEmbedDefinirConfig() {
+function gerarEmbedStatusConfiguracoes() {
   return new EmbedBuilder()
-    .setTitle('🛠️ Definir Configurações & Visual')
-    .setDescription('Configure os canais, cargos, tempo e edite o texto/banner do painel.\n*Todas as alterações sincronizam automaticamente no painel público!*\n')
-    .setColor(0x2b2d31)
+    .setTitle('⚙️ Status Atual das Configurações')
+    .setDescription('Confira abaixo as informações registradas no sistema no momento:')
+    .setColor(0xe74c3c)
     .addFields(
       { name: '🎨 Título do Painel', value: `\`${config.painelTitulo}\``, inline: false },
-      { name: '🖼️ Banner do Topo', value: config.painelBannerUrl ? `[Clique para ver o banner](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
-      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true }, { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📣 Canal Anúncios/Avisos', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true }, { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }, { name: '🚫 Cargo a Remover (Tirar)', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
-      { name: '⏱️ Tempo p/ Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false }
+      { name: '🖼️ Banner do Topo', value: config.painelBannerUrl ? `[Clique para abrir o Banner](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
+      { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
+      { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal de Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '⏱️ Tempo por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
+      { name: '❓ Total de Perguntas', value: `\`${config.perguntas.length}\` pergunta(s)`, inline: false }
     );
 }
 
-// ORGANIZAÇÃO DOS SELECTS DENTRO DO LIMITE DE 5 ACTIONROWS
+// TELA EXCLUSIVA PARA VISUAL & TEXTOS
+function gerarEmbedVisualTextos() {
+  return new EmbedBuilder()
+    .setTitle('🎨 Configurações de Visual & Textos')
+    .setDescription(
+      'Aqui você pode alterar a aparência do painel público de recrutamento.\n\n' +
+      '• **Título**: Mude o nome do topo da embed.\n' +
+      '• **Descrição**: Edite a mensagem de boas-vindas aos candidatos.\n' +
+      '• **Banner**: Insira o link de uma imagem ou GIF animado no topo.'
+    )
+    .setColor(0xe74c3c)
+    .addFields(
+      { name: '📌 Título Atual', value: `\`${config.painelTitulo}\``, inline: false },
+      { name: '🖼️ Banner Atual', value: config.painelBannerUrl ? `[Banner Configurado](${config.painelBannerUrl})` : '❌ *Nenhum banner enviado*', inline: false }
+    );
+}
+
+function gerarBotoesVisualTextos() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Alterar Título, Descrição & Banner').setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+    )
+  ];
+}
+
+function gerarEmbedDefinirConfig() {
+  return new EmbedBuilder()
+    .setTitle('🛠️ Definir Canais e Cargos')
+    .setDescription('Selecione abaixo os canais do sistema e a hierarquia dos cargos do recrutamento.')
+    .setColor(0xe74c3c)
+    .addFields(
+      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
+      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
+    );
+}
+
 function gerarSelectsDefinirConfig() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('🎨 Editar Textos & Banner').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     ),
     new ActionRowBuilder().addComponents(
@@ -560,7 +681,31 @@ function gerarSelectsDefinirConfig() {
       new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
+    ),
+    new ActionRowBuilder().addComponents(
       new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
+    )
+  ];
+}
+
+function gerarEmbedGerenciarPerguntas() {
+  return new EmbedBuilder()
+    .setTitle('❓ Gerenciar Perguntas & Tempo')
+    .setDescription('Adicione ou remova perguntas do formulário e defina o tempo limite de resposta.')
+    .setColor(0xe74c3c)
+    .addFields(
+      { name: '⏱️ Tempo Atual por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
+      { name: `📋 Perguntas Cadastradas: ${config.perguntas.length}/20`, value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).` }
+    );
+}
+
+function gerarBotoesGerenciarPerguntas() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -573,27 +718,6 @@ function gerarSelectsDefinirConfig() {
           { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
           { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
         ])
-    )
-  ];
-}
-
-function gerarEmbedGerenciarPerguntas() {
-  return new EmbedBuilder()
-    .setTitle('❓ Gerenciar Perguntas')
-    .setDescription('Controle as perguntas utilizadas no formulário de recrutamento.')
-    .setColor(0x2b2d31)
-    .addFields({
-      name: `📋 Perguntas: ${config.perguntas.length}/20`,
-      value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).`
-    });
-}
-
-function gerarBotoesGerenciarPerguntas() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
