@@ -319,7 +319,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (config.perguntas.length === 0) {
         embedPerguntas.setDescription('❌ **Nenhuma pergunta cadastrada.**');
       } else {
-        const lista = config.perguntas.map((p, i) => `**${i + 1}.** ${p}`).join('\n\n'); embedPerguntas.setDescription(lista); }  const rowVoltar = new ActionRowBuilder().addComponents( new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setStyle(ButtonStyle.Secondary) ); return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] }); }  // APROVAÇÃO COM ANÚNCIO E ATRIBUIÇÃO DE CARGO if (customId.startsWith('aprovar_') \vert{}\vert{} customId.startsWith('reprovar_')) { const isOwner = interaction.guild.ownerId === interaction.user.id; const hasRecruiterRole = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);  if (!isOwner && !hasRecruiterRole) { return interaction.reply({ content: '❌ **Acesso negado!** Apenas recrutadores autorizados ou o dono do servidor podem aprovar/reprovar candidaturas.', ephemeral: true }); }  const [acao, userId] = customId.split('_'); const member = await interaction.guild.members.fetch(userId).catch(() => null);  if (acao === 'aprovar') { if (member && config.cargosAprovar.length > 0) await member.roles.add(config.cargosAprovar).catch(() => null); if (member && config.cargosRemover.length > 0) await member.roles.remove(config.cargosRemover).catch(() => null);  const embedAtual = EmbedBuilder.from(interaction.message.embeds[0]) .setColor(0x2ecc71) .setTitle('✅ Candidatura Aprovada') .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
+        const lista = config.perguntas.map((p, i) => `**${i + 1}.**${p}`).join('\n\n');
+        embedPerguntas.setDescription(lista);
+      }
+
+      const rowVoltar = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
+      );
+      return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
+    }
+
+    // APROVAÇÃO COM ANÚNCIO E ATRIBUIÇÃO DE CARGO
+    if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
+      const isOwner = interaction.guild.ownerId === interaction.user.id;
+      const hasRecruiterRole = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);
+
+      if (!isOwner && !hasRecruiterRole) {
+        return interaction.reply({
+          content: '❌ **Acesso negado!** Apenas recrutadores autorizados ou o dono do servidor podem aprovar/reprovar candidaturas.',
+          ephemeral: true
+        });
+      }
+
+      const [acao, userId] = customId.split('_');
+      const member = await interaction.guild.members.fetch(userId).catch(() => null);
+
+      if (acao === 'aprovar') {
+        if (member && config.cargosAprovar.length > 0) await member.roles.add(config.cargosAprovar).catch(() => null);
+        if (member && config.cargosRemover.length > 0) await member.roles.remove(config.cargosRemover).catch(() => null);
+
+        const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
+          .setColor(0x2ecc71)
+          .setTitle('✅ Candidatura Aprovada')
+          .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
 
         await interaction.update({ embeds: [embedAtual], components: [] });
 
@@ -331,8 +363,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
               'Parabéns! Seu recrutamento foi **aprovado**.\n\n' +
               'Você foi aceito na organização.\n\n' +
               '📌 **Resultado**\n🟢 Aprovado\n\n' +
-              `🏢 **Servidor**\n${interaction.guild.name}` ) .setColor(0x2ecc71) .setFooter({ text: '🤖 Organizações • Roleplay \vert{} Desenvolvido por Cetus' });  member.send({ embeds: [embedPvAprovado] }).catch(() => null); }  // ANÚNCIO NO CANAL COM FOOTER CORRIGIDO if (config.anunciosChannelId) { const canalAnuncios = await interaction.guild.channels.fetch(config.anunciosChannelId).catch(() => null); if (canalAnuncios) { const dataAtual = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });  const embedAvisoAprovado = new EmbedBuilder() .setTitle('✅ │ FORMULÁRIO APROVADO') .setDescription( `Parabéns <@${userId}>, você foi **APROVADO** no processo seletivo.\n\n` +
-                `👮 **Instrutor:** ${interaction.user}\n\n` + '───────────────────────\n' + '🎉 Seja bem-vindo à organização!\n\n' + `📅 **Data:** ${dataAtual}`
+              `🏢 **Servidor**\n${interaction.guild.name}`
+            )
+            .setColor(0x2ecc71)
+            .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+
+          member.send({ embeds: [embedPvAprovado] }).catch(() => null);
+        }
+
+        // ANÚNCIO NO CANAL COM FOOTER CETUS
+        if (config.anunciosChannelId) {
+          const canalAnuncios = await interaction.guild.channels.fetch(config.anunciosChannelId).catch(() => null);
+          if (canalAnuncios) {
+            const dataAtual = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+            const embedAvisoAprovado = new EmbedBuilder()
+              .setTitle('✅ │ FORMULÁRIO APROVADO')
+              .setDescription(
+                `Parabéns <@${userId}>, você foi **APROVADO** no processo seletivo.\n\n` +
+                `👮 **Instrutor:** ${interaction.user}\n\n` +
+                '───────────────────────\n' +
+                '🎉 Seja bem-vindo à organização!\n\n' +
+                `📅 **Data:** ${dataAtual}`
               )
               .setColor(0x2ecc71)
               .setImage(config.bannerAprovadoUrl)
@@ -346,7 +398,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0xe74c3c)
           .setTitle('❌ Candidatura Reprovada')
-          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });  await interaction.update({ embeds: [embedAtual], components: [] });  if (member) { const embedPvReprovado = new EmbedBuilder() .setTitle('❌ Recrutamento Reprovado') .setDescription( 'Agradecemos o envio do seu formulário.\n\n' + 'Sua candidatura foi **reprovada** pela gerência.\n\n' + '📌 **Resultado**\n🔴 Reprovado\n\n' + `🏢 **Servidor**\n${interaction.guild.name}`
+          .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });
+
+        await interaction.update({ embeds: [embedAtual], components: [] });
+
+        if (member) {
+          const embedPvReprovado = new EmbedBuilder()
+            .setTitle('❌ Recrutamento Reprovado')
+            .setDescription(
+              'Agradecemos o envio do seu formulário.\n\n' +
+              'Sua candidatura foi **reprovada** pela gerência.\n\n' +
+              '📌 **Resultado**\n🔴 Reprovado\n\n' +
+              `🏢 **Servidor**\n${interaction.guild.name}`
             )
             .setColor(0xe74c3c)
             .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
@@ -390,7 +453,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const tempoMinutos = valorMs / 60000;
       if (tempoMinutos < 1) {
-        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`; } else if (tempoMinutos === 1) { config.tempoPerguntaTexto = '1 minuto'; } else { config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
+        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`;
+      } else if (tempoMinutos === 1) {
+        config.tempoPerguntaTexto = '1 minuto';
+      } else {
+        config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
       }
 
       await sincronizarPainelPublico(interaction.guild);
@@ -431,7 +498,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const guild = interaction.guild;
       const user = interaction.user;
 
-      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;  try { const permissionOverwrites = [ { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] }, { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] } ];  if (config.cargoRecrutador) { permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }); }  const canalParams = { name: canalNome, type: ChannelType.GuildText, permissionOverwrites };  if (config.categoriaId) { canalParams.parent = config.categoriaId; }  const canalTicket = await guild.channels.create(canalParams);  sessoesCandidatos.set(canalTicket.id, { userId: user.id, nomeIdPersonagem: nomeId, step: 0, respostas: [], rgImageUrl: null, timer: null });  await canalTicket.send({ content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
+      const canalNome = `recrutamento-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+      try {
+        const permissionOverwrites = [
+          { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] }
+        ];
+
+        if (config.cargoRecrutador) {
+          permissionOverwrites.push({ id: config.cargoRecrutador, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
+        }
+
+        const canalParams = {
+          name: canalNome,
+          type: ChannelType.GuildText,
+          permissionOverwrites
+        };
+
+        if (config.categoriaId) {
+          canalParams.parent = config.categoriaId;
+        }
+
+        const canalTicket = await guild.channels.create(canalParams);
+
+        sessoesCandidatos.set(canalTicket.id, {
+          userId: user.id,
+          nomeIdPersonagem: nomeId,
+          step: 0,
+          respostas: [],
+          rgImageUrl: null,
+          timer: null
+        });
+
+        await canalTicket.send({
+          content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
         });
 
         iniciarTimerPergunta(canalTicket.id, canalTicket, user);
@@ -461,7 +562,6 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // CAPTURA E VALIDAÇÃO DA IMAGEM DO RG
     sessao.rgImageUrl = anexo.url;
     await avancarPergunta(message.channel.id, message.channel, message.author);
     return;
@@ -486,7 +586,11 @@ async function enviarRelatorio(user, sessao) {
   if (!canal) return;
 
   const embed = new EmbedBuilder()
-    .setTitle(`📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}`) .setColor(config.painelCorHex) .setThumbnail(user.displayAvatarURL({ dynamic: true })) .addFields( { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
+    .setTitle(`📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}`)
+    .setColor(config.painelCorHex)
+    .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+    .addFields(
+      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
       { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
       { name: '‎', value: '─── **Perguntas & Respostas** ───' }
     )
@@ -500,8 +604,16 @@ async function enviarRelatorio(user, sessao) {
   sessao.respostas.forEach((r, idx) => {
     embed.addFields({
       name: `❓ P${idx + 1}:${r.pergunta}`,
-      value: `> ${r.resposta \vert{}\vert{} '*Sem resposta*'}` }); });  const row = new ActionRowBuilder().addComponents( new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger) );  const textoMencao = config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
+      value: `> ${r.resposta || '*Sem resposta*'}`
+    });
+  });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
+  );
+
+  const textoMencao = config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
@@ -551,9 +663,12 @@ function gerarEmbedStatusConfiguracoes() {
       { name: '🎨 Título do Painel', value: `\`${config.painelTitulo}\``, inline: false },
       { name: '🎨 Cor da Coluna Lateral', value: `\`${config.painelCorNome}\``, inline: false },
       { name: '🖼️ Banner Painel Principal', value: config.painelBannerUrl ? `[Clique para ver](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
-      { name: '🖼️ Banner de Aprovado', value: config.bannerAprovadoUrl ? `[Clique para ver](${config.bannerAprovadoUrl})` : '❌ *Padrão ativo*', inline: false }, { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
-      { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true }, { name: '📣 Canal de Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false }, { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '🖼️ Banner de Aprovado', value: config.bannerAprovadoUrl ? `[Clique para ver](${config.bannerAprovadoUrl})` : '❌ *Padrão ativo*', inline: false },
+      { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
+      { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal de Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
       { name: '⏱️ Tempo por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
       { name: '❓ Total de Perguntas', value: `\`${config.perguntas.length}\` pergunta(s) ativa(s)`, inline: false }
     );
@@ -583,13 +698,49 @@ function gerarEmbedVisualTextos() {
     .addFields(
       { name: '📌 Título Atual', value: `\`${config.painelTitulo}\``, inline: false },
       { name: '🎨 Cor Lateral', value: `\`${config.painelCorNome}\``, inline: false },
-      { name: '🖼️ Banner Aprovado', value: config.bannerAprovadoUrl ? `[Banner Configurado](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false } ); }  function gerarBotoesVisualTextos() { return [ new ActionRowBuilder().addComponents( new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Editar Textos e Banners').setStyle(ButtonStyle.Primary) ), new ActionRowBuilder().addComponents( new StringSelectMenuBuilder() .setCustomId('select_cor_painel') .setPlaceholder('🎨 Selecione a Cor da Barra Lateral') .addOptions([ { label: 'Verde (Padrão Aprovado)', value: '0x2ecc71', description: 'Cor verde' }, { label: 'Vermelho', value: '0xe74c3c', description: 'Cor vermelha clássica' }, { label: 'Azul', value: '0x3498db', description: 'Cor azul' }, { label: 'Amarelo', value: '0xf1c40f', description: 'Cor amarela' }, { label: 'Roxo', value: '0x9b59b6', description: 'Cor roxa' }, { label: 'Preto / Cinza Escuro', value: '0x2b2d31', description: 'Cor escura minimalista' } ]) ), new ActionRowBuilder().addComponents( new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary) ) ]; }  function gerarEmbedDefinirConfig() { return new EmbedBuilder() .setTitle('🛠️ Definir Canais e Cargos') .setDescription('Utilize os menus abaixo para associar os canais e cargos do sistema.') .setColor(config.painelCorHex) .addFields( { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
-      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true }, { name: '📣 Canal Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false }, { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
+      { name: '🖼️ Banner Aprovado', value: config.bannerAprovadoUrl ? `[Banner Configurado](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false }
     );
 }
 
-// INCLUSÃO DO SELECT MENU DE CARGO DE APROVADO
+function gerarBotoesVisualTextos() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Editar Textos e Banners').setStyle(ButtonStyle.Primary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_cor_painel')
+        .setPlaceholder('🎨 Selecione a Cor da Barra Lateral')
+        .addOptions([
+          { label: 'Verde (Padrão Aprovado)', value: '0x2ecc71', description: 'Cor verde' },
+          { label: 'Vermelho', value: '0xe74c3c', description: 'Cor vermelha clássica' },
+          { label: 'Azul', value: '0x3498db', description: 'Cor azul' },
+          { label: 'Amarelo', value: '0xf1c40f', description: 'Cor amarela' },
+          { label: 'Roxo', value: '0x9b59b6', description: 'Cor roxa' },
+          { label: 'Preto / Cinza Escuro', value: '0x2b2d31', description: 'Cor escura minimalista' }
+        ])
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+    )
+  ];
+}
+
+function gerarEmbedDefinirConfig() {
+  return new EmbedBuilder()
+    .setTitle('🛠️ Definir Canais e Cargos')
+    .setDescription('Utilize os menus abaixo para associar os canais e cargos do sistema.')
+    .setColor(config.painelCorHex)
+    .addFields(
+      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
+      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
+    );
+}
+
+// ORGANIZAÇÃO DOS SELECTS PARA EVITAR ERROS NA DISCLOUD
 function gerarSelectsDefinirConfig() {
   return [
     new ActionRowBuilder().addComponents(
