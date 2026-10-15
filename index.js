@@ -54,7 +54,7 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
-// Apenas Dono do servidor ou Administrador do Discord
+// Permissão restrita: Apenas Dono ou Administrador do Discord
 function isDonoOuAdmin(interaction) {
   const isOwner = interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -124,10 +124,10 @@ function iniciarTimerPergunta(channelId, channel, user) {
         'Olá! Seu recrutamento foi **encerrado por inatividade**.\n\n' +
         `⏰ Você não respondeu a pergunta em até **${config.tempoPerguntaTexto}**.\n` +
         '🗑️ O canal do recrutamento foi fechado.\n\n' +
-        'Se ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀'
+        'Se ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀\n\n' +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
       )
-      .setColor(0xe74c3c)
-      .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+      .setColor(0xe74c3c);
 
     await user.send({ embeds: [embedExpirado] }).catch(() => null);
 
@@ -226,7 +226,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // DIRETO PARA A TELA DE BOTÕES DE NAVEGAÇÃO
     if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
       if (!isDonoOuAdmin(interaction)) {
         return interaction.reply({
@@ -244,7 +243,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // EXIBE RESUMO DAS CONFIGURAÇÕES AO CLICAR EM "Config"
     if (customId === 'menu_config_geral') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
 
@@ -380,7 +378,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
-    // TELA PARA SELECIONAR E REMOVER UMA PERGUNTA ESPECÍFICA
     if (customId === 'btn_rem_pergunta_especifica') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
@@ -459,10 +456,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
               'Parabéns! Seu recrutamento foi **aprovado**.\n\n' +
               'Você foi aceito na organização.\n\n' +
               '📌 **Resultado**\n🟢 Aprovado\n\n' +
-              `🏢 **Servidor**\n${interaction.guild.name}`
+              `🏢 **Servidor**\n${interaction.guild.name}\n\n` +
+              '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
             )
-            .setColor(0x2ecc71)
-            .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+            .setColor(0x2ecc71);
 
           member.send({ embeds: [embedPvAprovado] }).catch(() => null);
         }
@@ -480,11 +477,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 `👮 **Instrutor:** ${interaction.user}\n\n` +
                 '───────────────────────\n' +
                 '🎉 Seja bem-vindo à organização!\n\n' +
-                `📅 **Data:** ${dataAtual}`
+                `📅 **Data:** ${dataAtual}\n\n` +
+                '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
               )
               .setColor(0x2ecc71)
-              .setImage(config.bannerAprovadoUrl)
-              .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+              .setImage(config.bannerAprovadoUrl);
 
             await canalAnuncios.send({ embeds: [embedAvisoAprovado] });
           }
@@ -505,10 +502,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
               'Agradecemos o envio do seu formulário.\n\n' +
               'Sua candidatura foi **reprovada** pela gerência.\n\n' +
               '📌 **Resultado**\n🔴 Reprovado\n\n' +
-              `🏢 **Servidor**\n${interaction.guild.name}`
+              `🏢 **Servidor**\n${interaction.guild.name}\n\n` +
+              '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
             )
-            .setColor(0xe74c3c)
-            .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+            .setColor(0xe74c3c);
 
           member.send({ embeds: [embedPvReprovado] }).catch(() => null);
         }
@@ -524,7 +521,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const customId = interaction.customId;
 
-    // REMOVE A PERGUNTA SELECIONADA
     if (customId === 'select_remover_pergunta_especifica') {
       const indexRemover = parseInt(interaction.values[0], 10);
       if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < config.perguntas.length) {
@@ -715,8 +711,7 @@ async function enviarRelatorio(user, sessao) {
       { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
       { name: '‎', value: '─── **Perguntas & Respostas** ───' }
     )
-    .setTimestamp()
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+    .setTimestamp();
 
   if (sessao.rgImageUrl) {
     embed.setImage(sessao.rgImageUrl);
@@ -739,21 +734,21 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
+// PAINEL PRINCIPAL COM CRÉDITO "Desenvolvido por Cetus"
 function gerarEmbedPainelPrincipal(guild) {
   const embed = new EmbedBuilder()
     .setTitle(config.painelTitulo)
-    .setDescription(config.painelDescricao)
-    .setColor(config.painelCorHex)
-    .addFields({
-      name: '🛡️ Etapas do Processo',
-      value: 
-        `• 📝 Preenchimento do formulário\n` +
-        `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
-        `• 🔍 Análise da candidatura\n` +
-        `• 🎶🎤 Entrevista com a equipe\n` +
-        `• ✅ Resultado final`
-    })
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+    .setDescription(
+      `${config.painelDescricao}\n\n` +
+      `🛡️ **Etapas do Processo**\n` +
+      `• 📝 Preenchimento do formulário\n` +
+      `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
+      `• 🔍 Análise da candidatura\n` +
+      `• 🎶🎤 Entrevista com a equipe\n` +
+      `• ✅ Resultado final\n\n` +
+      `🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+    )
+    .setColor(config.painelCorHex);
 
   if (guild && guild.iconURL()) {
     embed.setThumbnail(guild.iconURL({ dynamic: true }));
