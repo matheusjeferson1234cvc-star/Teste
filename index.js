@@ -246,7 +246,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId === 'btn_editar_painel') {
       const modal = new ModalBuilder()
         .setCustomId('modal_editar_painel')
-        .setTitle('Personalizar Título, Banner & Imagem');
+        .setTitle('Personalizar Título, Descrição & Banner');
 
       const inputTitulo = new TextInputBuilder()
         .setCustomId('p_titulo')
@@ -270,21 +270,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(TextInputStyle.Short)
         .setRequired(false);
 
-      const inputAprovado = new TextInputBuilder()
-        .setCustomId('p_banner_aprovado')
-        .setLabel('URL Banner de APROVADO')
-        .setPlaceholder('https://...')
-        .setValue(config.bannerAprovadoUrl || '')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
       modal.addComponents(
         new ActionRowBuilder().addComponents(inputTitulo),
         new ActionRowBuilder().addComponents(inputDesc),
-        new ActionRowBuilder().addComponents(inputBanner),
-        new ActionRowBuilder().addComponents(inputAprovado)
+        new ActionRowBuilder().addComponents(inputBanner)
       );
 
+      return interaction.showModal(modal);
+    }
+
+    // NOVO BOTAO EXCLUSIVO PARA ALTERAR BANNER DE APROVAÇÃO
+    if (customId === 'btn_editar_banner_aprovacao') {
+      const modal = new ModalBuilder()
+        .setCustomId('modal_editar_banner_aprovacao')
+        .setTitle('Banner de Aprovação');
+
+      const inputAprovado = new TextInputBuilder()
+        .setCustomId('p_banner_aprovado')
+        .setLabel('URL Banner de APROVADO')
+        .setPlaceholder('https://i.imgur.com/exemplo.png')
+        .setValue(config.bannerAprovadoUrl || '')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(inputAprovado));
       return interaction.showModal(modal);
     }
 
@@ -476,6 +485,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const bannerInput = interaction.fields.getTextInputValue('p_banner');
       config.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
 
+      await sincronizarPainelPublico(interaction.guild);
+      return interaction.update({ embeds: [gerarEmbedVisualTextos()], components: gerarBotoesVisualTextos() });
+    }
+
+    if (interaction.customId === 'modal_editar_banner_aprovacao') {
       const aprovadoInput = interaction.fields.getTextInputValue('p_banner_aprovado');
       if (aprovadoInput.trim().startsWith('http')) {
         config.bannerAprovadoUrl = aprovadoInput.trim();
@@ -578,7 +592,6 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// ENVIO DO RELATÓRIO COM SUPORTE CORRIGIDO PARA FOTO DE RG
 async function enviarRelatorio(user, sessao) {
   if (!config.relatorioChannelId) return;
 
@@ -654,9 +667,9 @@ function gerarBotaoFormularioComConfig() {
 
 function gerarEmbedStatusConfiguracoes() {
   return new EmbedBuilder()
-    .setTitle('⚙️ Configurações Definidas')
+    .setTitle('⚙️ Configurações Definidas do Servidor')
     .setDescription(
-      'Abaixo estão todas as configurações salvas no sistema no momento:\n'
+      'Abaixo estão todas as configurações atualmente salvas no sistema:\n'
     )
     .setColor(config.painelCorHex)
     .addFields(
@@ -666,7 +679,7 @@ function gerarEmbedStatusConfiguracoes() {
       { name: '🖼️ Banner de Aprovado', value: config.bannerAprovadoUrl ? `[Clique para ver](${config.bannerAprovadoUrl})` : '❌ *Padrão ativo*', inline: false },
       { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
       { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📣 Canal de Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal de Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
       { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
       { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
       { name: '⏱️ Tempo por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
@@ -692,20 +705,21 @@ function gerarEmbedVisualTextos() {
       'Edite a aparência do painel público e mensagens do bot:\n\n' +
       '• **Título & Descrição**: Textos do painel principal.\n' +
       '• **Cor Borda Lateral**: Cor do painel público.\n' +
-      '• **Banners**: URLs do banner do painel e imagem de Aprovado.'
+      '• **Banner de Aprovação**: URL da imagem do anúncio de aprovados.'
     )
     .setColor(config.painelCorHex)
     .addFields(
       { name: '📌 Título Atual', value: `\`${config.painelTitulo}\``, inline: false },
       { name: '🎨 Cor Lateral', value: `\`${config.painelCorNome}\``, inline: false },
-      { name: '🖼️ Banner Aprovado', value: config.bannerAprovadoUrl ? `[Banner Configurado](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false }
+      { name: '🖼️ Banner Aprovado Atual', value: config.bannerAprovadoUrl ? `[Clique para ver o Banner](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false }
     );
 }
 
 function gerarBotoesVisualTextos() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Editar Textos e Banners').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Editar Título & Descrição').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('btn_editar_banner_aprovacao').setLabel('🖼️ Definir Banner de Aprovação').setStyle(ButtonStyle.Success)
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -734,13 +748,12 @@ function gerarEmbedDefinirConfig() {
     .addFields(
       { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
       { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📣 Canal Anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '📣 Canal Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
       { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
       { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
     );
 }
 
-// ORGANIZAÇÃO DOS SELECTS PARA EVITAR ERROS NA DISCLOUD
 function gerarSelectsDefinirConfig() {
   return [
     new ActionRowBuilder().addComponents(
@@ -753,10 +766,10 @@ function gerarSelectsDefinirConfig() {
       new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📣 Selecione o Canal de Anúncios (Aprovados)').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
     )
   ];
 }
