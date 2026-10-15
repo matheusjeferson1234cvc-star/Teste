@@ -226,6 +226,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
+    // DIRETO PARA A TELA DE BOTÕES DE NAVEGAÇÃO
     if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
       if (!isDonoOuAdmin(interaction)) {
         return interaction.reply({
@@ -243,6 +244,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
+    // EXIBE RESUMO DAS CONFIGURAÇÕES AO CLICAR EM "Config"
     if (customId === 'menu_config_geral') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
 
@@ -378,7 +380,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
-    // EXIBE MENU PARA SELECIONAR E REMOVER UMA PERGUNTA ESPECÍFICA
+    // TELA PARA SELECIONAR E REMOVER UMA PERGUNTA ESPECÍFICA
     if (customId === 'btn_rem_pergunta_especifica') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
@@ -474,6 +476,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setTitle('✅ │ FORMULÁRIO APROVADO')
               .setDescription(
                 `Parabéns <@${userId}>, você foi **APROVADO** no processo seletivo.\n\n` +
+                `🏢 **Servidor:** ${interaction.guild.name}\n` +
                 `👮 **Instrutor:** ${interaction.user}\n\n` +
                 '───────────────────────\n' +
                 '🎉 Seja bem-vindo à organização!\n\n' +
@@ -521,7 +524,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const customId = interaction.customId;
 
-    // AÇÃO DE REMOVER A PERGUNTA ESCOLHIDA NO MENU
+    // REMOVE A PERGUNTA SELECIONADA
     if (customId === 'select_remover_pergunta_especifica') {
       const indexRemover = parseInt(interaction.values[0], 10);
       if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < config.perguntas.length) {
@@ -915,7 +918,6 @@ function gerarEmbedGerenciarPerguntas() {
     );
 }
 
-// BOTOES DE GERENCIAR PERGUNTAS INCLUINDO A OPÇÃO DE REMOVER UMA ESPECÍFICA
 function gerarBotoesGerenciarPerguntas() {
   return [
     new ActionRowBuilder().addComponents(
