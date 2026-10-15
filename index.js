@@ -29,22 +29,22 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
-// Cache local em memória para armazenamento temporário das configurações
+// Armazenamento temporário em memória das configurações
 const config = {
   relatorioChannelId: null,
   anunciosChannelId: null,
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  perguntas: [] // Suporta até 20 perguntas configuráveis
+  perguntas: [] // Até 20 perguntas configuráveis
 };
 
-// Sessões ativas dos candidatos (userId -> { step, respostas, rgImageUrl })
+// Controle de sessões dos candidatos (userId -> { step, respostas, rgImageUrl })
 const sessoesCandidatos = new Map();
 
-// Registo automático de Slash Commands e Inicialização
+// Registro automático de Slash Commands e Inicialização
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Bot de recrutamento ativo como: ${c.user.tag}`);
+  console.log(`🤖 Bot de recrutamento online como: ${c.user.tag}`);
 
   try {
     const commands = [
@@ -55,15 +55,19 @@ client.once(Events.ClientReady, async (c) => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-    console.log('🔄 A registrar comando /painel...');
+    // DICA: Se quiser que o comando apareça INSTANTANEAMENTE no seu servidor de teste,
+    // substitua a linha abaixo colando o ID do seu servidor no local indicado:
+    // await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, 'ID_DO_SEU_SERVIDOR_AQUI'), { body: commands });
+
+    console.log('🔄 Registrando comando /painel...');
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
     console.log('✅ Comando /painel registrado com sucesso!');
   } catch (error) {
-    console.error('❌ Erro ao registrar comando /painel:', error);
+    console.error('❌ Erro ao registrar o comando /painel:', error);
   }
 });
 
-// Gestão de Interações (Botões, Modais, Selects e Commands)
+// Gerenciamento de Interações
 client.on(Events.InteractionCreate, async (interaction) => {
   // Comando Slash /painel
   if (interaction.isChatInputCommand()) {
@@ -81,7 +85,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // Enviar o painel oficial para os usuários no canal
+    // Enviar o painel oficial para o canal
     if (customId === 'enviar_painel_recrutamento') {
       await interaction.channel.send({
         embeds: [gerarEmbedPainelPrincipal()],
@@ -101,21 +105,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         const dm = await interaction.user.createDM();
         await dm.send(
-          '📌 **Etapa 1:** Envie uma **foto legível do seu RG** aqui nas mensagens privadas para dar início ao processo.'
+          '📌 **Etapa 1:** Envie uma **foto legível do seu RG** aqui nas mensagens privadas para iniciar o processo.'
         );
         return interaction.reply({
-          content: '📬 Mensagem enviada no privado! Verifique o seu PV.',
+          content: '📬 Mensagem enviada no seu privado! Dá uma olhada na sua DM.',
           ephemeral: true
         });
       } catch (err) {
         return interaction.reply({
-          content: '❌ As suas mensagens privadas (DM) estão fechadas. Abra as DMs para continuar.',
+          content: '❌ Suas mensagens privadas (DM) estão fechadas. Abra suas DMs para continuar.',
           ephemeral: true
         });
       }
     }
 
-    // Navegação Interna (interaction.update mantém o painel ativo sem sumir)
+    // Navegação Interna (interaction.update mantém o painel aberto sem sumir)
     if (customId === 'menu_config_geral') {
       return interaction.update({
         embeds: [gerarEmbedConfigGeral()],
@@ -140,7 +144,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // Adicionar pergunta (Modal)
     if (customId === 'btn_add_pergunta') {
       if (config.perguntas.length >= 20) {
-        return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
+        return interaction.reply({ content: '❌ Limite máximo de 20 perguntas atingido!', ephemeral: true });
       }
 
       const modal = new ModalBuilder()
@@ -160,7 +164,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // Remover última pergunta
     if (customId === 'btn_rem_pergunta') {
       if (config.perguntas.length === 0) {
-        return interaction.reply({ content: '❌ Não há perguntas para remover.', ephemeral: true });
+        return interaction.reply({ content: '❌ Não há nenhuma pergunta para remover.', ephemeral: true });
       }
       config.perguntas.pop();
       return interaction.update({
@@ -169,7 +173,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Listar perguntas atuais
+    // Listar perguntas cadastradas
     if (customId === 'btn_ver_perguntas') {
       const lista = config.perguntas.map((p, i) => `**${i + 1}.** ${p}`).join('\n') || 'Nenhuma pergunta cadastrada.';
       return interaction.reply({ content: `📋 **Perguntas Atuais:**\n\n${lista}`, ephemeral: true });
@@ -195,7 +199,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.update({ embeds: [embedAtual], components: [] });
 
-        if (member) member.send('🎉 **Parabéns!** A sua candidatura foi **APROVADA**!').catch(() => null);
+        if (member) member.send('🎉 **Parabéns!** Sua candidatura foi **APROVADA**!').catch(() => null);
       } else {
         const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
           .setColor(0xe74c3c)
@@ -204,12 +208,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.update({ embeds: [embedAtual], components: [] });
 
-        if (member) member.send('❌ A sua candidatura foi **REPROVADA**.').catch(() => null);
+        if (member) member.send('❌ Sua candidatura foi **REPROVADA**.').catch(() => null);
       }
     }
   }
 
-  // Interações dos Select Menus
+  // Interações de Menus Seletores (Atualiza mantendo o painel aberto)
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
     const customId = interaction.customId;
 
@@ -225,7 +229,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // Submissão do Modal
+  // Envio de Modais
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
@@ -246,7 +250,7 @@ client.on(Events.MessageCreate, async (message) => {
   const sessao = sessoesCandidatos.get(message.author.id);
   if (!sessao) return;
 
-  // Passo 0: Receber a imagem do RG
+  // Etapa 0: Receber a imagem do RG
   if (sessao.step === 0) {
     const anexo = message.attachments.first();
     if (!anexo || !anexo.contentType?.startsWith('image/')) {
@@ -259,14 +263,14 @@ client.on(Events.MessageCreate, async (message) => {
     if (config.perguntas.length === 0) {
       await enviarRelatorio(message.author, sessao);
       sessoesCandidatos.delete(message.author.id);
-      return message.reply('✅ RG recebido! O formulário foi enviado para análise.');
+      return message.reply('✅ Foto do RG recebida! Seu formulário foi enviado para análise.');
     }
 
-    await message.reply(`✅ **RG Recebido!**\n\n**Pergunta 1/${config.perguntas.length}:**\n${config.perguntas[0]}`);
+    await message.reply(`✅ **Foto do RG Recebida!**\n\n**Pergunta 1/${config.perguntas.length}:**\n${config.perguntas[0]}`);
     return;
   }
 
-  // Passos 1 a N: Responder às perguntas sequencialmente
+  // Etapas 1 a N: Responder às perguntas em sequência
   if (sessao.step > 0 && sessao.step <= config.perguntas.length) {
     sessao.respostas.push({
       pergunta: config.perguntas[sessao.step - 1],
@@ -280,12 +284,12 @@ client.on(Events.MessageCreate, async (message) => {
     } else {
       await enviarRelatorio(message.author, sessao);
       sessoesCandidatos.delete(message.author.id);
-      await message.reply('🎉 **Formulário concluído!** As suas respostas foram enviadas para avaliação.');
+      await message.reply('🎉 **Formulário concluído!** Suas respostas foram enviadas para avaliação.');
     }
   }
 });
 
-// Função para publicar o relatório no canal configurado
+// Função para enviar o relatório completo no canal configurado
 async function enviarRelatorio(user, sessao) {
   if (!config.relatorioChannelId) return;
 
@@ -315,7 +319,7 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ embeds: [embed], components: [row] });
 }
 
-// Construtores das Embeds e Componentes
+// Construtores de Embeds e Componentes
 function gerarEmbedConfigGeral() {
   return new EmbedBuilder()
     .setTitle('⚙️ Configuração do Recrutamento')
@@ -346,8 +350,8 @@ function gerarEmbedDefinirConfig() {
       { name: '📢 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ Não definido' },
       { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ Não definido' },
       { name: '👑 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ Não definido' },
-      { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Nenhum' },
-      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum' }
+      { name: '✅ Cargos a adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Nenhum' },
+      { name: '🗑️ Cargos a remover ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum' }
     );
 }
 
