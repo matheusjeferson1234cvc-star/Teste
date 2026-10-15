@@ -54,7 +54,7 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
-// Função que verifica estritamente se o usuário é Dono do servidor ou Administrador
+// Apenas Dono do servidor ou Administrador do Discord
 function isDonoOuAdmin(interaction) {
   const isOwner = interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -215,7 +215,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       return interaction.reply({
-        embeds: [gerarEmbedStatusConfiguracoes()],
+        embeds: [gerarEmbedMenuNavegacao()],
         components: gerarBotoesConfigGeral(),
         ephemeral: true
       });
@@ -226,21 +226,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // BLOQUEIO TOTAL DAS CONFIGURAÇÕES PARA QUEM NÃO É ADMIN/DONO
+    // MENU PRINCIPAL DE NAVEGAÇÃO
+    if (customId === 'menu_navegacao_principal') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
+      return interaction.update({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral() });
+    }
+
+    // BOTÃO "Config" / "⚙️ Configuração do Recrutamento" (TELA DA SUA IMAGEM)
     if (customId === 'abrir_config_painel' || customId === 'menu_config_geral') {
       if (!isDonoOuAdmin(interaction)) {
         return interaction.reply({
-          content: '❌ **Acesso negado!** Apenas o Dono ou membros com cargo de **Administrador** no servidor podem acessar as configurações do bot.',
+          content: '❌ **Acesso negado!** Apenas o Dono ou Administradores podem acessar as configurações.',
           ephemeral: true
         });
       }
 
+      const rowVoltar = [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
+        )
+      ];
+
       if (interaction.replied || interaction.deferred) {
-        return interaction.followUp({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral(), ephemeral: true });
+        return interaction.followUp({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar, ephemeral: true });
       } else if (customId === 'abrir_config_painel') {
-        return interaction.reply({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral(), ephemeral: true });
+        return interaction.reply({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar, ephemeral: true });
       } else {
-        return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral() });
+        return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar });
       }
     }
 
@@ -265,9 +277,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [gerarEmbedVisualTextos()], components: gerarBotoesVisualTextos() });
     }
 
-    if (customId === 'menu_definir_config') {
+    if (customId === 'menu_definir_config' || customId === 'page_canais') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
+      return interaction.update({ embeds: [gerarEmbedCanaisCategoria()], components: gerarSelectsCanaisCategoria() });
+    }
+
+    if (customId === 'page_cargos') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      return interaction.update({ embeds: [gerarEmbedCargos()], components: gerarSelectsCargos() });
     }
 
     if (customId === 'menu_gerenciar_perguntas') {
@@ -377,13 +394,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
     }
 
-    // AVALIAÇÃO DE FORMULÁRIOS: PERMITE ADMINS OU QUEM TIVER O CARGO ESCOLHIDO NAS CONFIGS
+    // APROVAÇÃO E REPROVAÇÃO
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const hasCargoRecrutador = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);
 
       if (!isDonoOuAdmin(interaction) && !hasCargoRecrutador) {
         return interaction.reply({
-          content: '❌ **Acesso negado!** Apenas o Dono, Administradores ou quem tem o cargo selecionado de **Recrutador** podem aprovar/reprovar candidaturas.',
+          content: '❌ **Acesso negado!** Apenas o Dono, Administradores ou membros com o cargo de Recrutador podem aprovar/reprovar.',
           ephemeral: true
         });
       }
@@ -465,7 +482,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // MENUS DE SELEÇÃO DAS CONFIGURAÇÕES (BLOQUEADO PARA ADMIN/DONO)
+  // MENUS DE SELEÇÃO
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
     if (!isDonoOuAdmin(interaction)) {
       return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores podem alterar configurações.', ephemeral: true });
@@ -476,6 +493,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
     if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
     if (customId === 'select_cargos_aprovar') config.cargosAprovar = interaction.values;
+    if (customId === 'select_cargos_remover') config.cargosRemover = interaction.values;
     if (customId === 'select_cargo_recrutador') config.cargoRecrutador = interaction.values[0];
 
     if (customId === 'select_cor_painel') {
@@ -514,7 +532,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await sincronizarPainelPublico(interaction.guild);
-    return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
+
+    if (['select_categoria', 'select_canal_relatorios', 'select_canal_anuncios'].includes(customId)) {
+      return interaction.update({ embeds: [gerarEmbedCanaisCategoria()], components: gerarSelectsCanaisCategoria() });
+    } else {
+      return interaction.update({ embeds: [gerarEmbedCargos()], components: gerarSelectsCargos() });
+    }
   }
 
   if (interaction.isModalSubmit()) {
@@ -705,25 +728,27 @@ function gerarBotaoFormularioComConfig() {
   );
 }
 
+function gerarEmbedMenuNavegacao() {
+  return new EmbedBuilder()
+    .setTitle('⚙️ Central de Configurações')
+    .setDescription('Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:')
+    .setColor(config.painelCorHex);
+}
+
+// TELA IDENTICA À SUA IMAGEM
 function gerarEmbedStatusConfiguracoes() {
   return new EmbedBuilder()
-    .setTitle('⚙️ Configurações Definidas do Servidor')
-    .setDescription(
-      'Abaixo estão todas as configurações atualmente salvas no sistema:\n'
-    )
+    .setTitle('⚙️ Configuração do Recrutamento')
+    .setDescription('Confira abaixo o estado atual do sistema.')
     .setColor(config.painelCorHex)
     .addFields(
-      { name: '🎨 Título do Painel', value: `\`${config.painelTitulo}\``, inline: false },
-      { name: '🎨 Cor da Coluna Lateral', value: `\`${config.painelCorNome}\``, inline: false },
-      { name: '🖼️ Banner Painel Principal', value: config.painelBannerUrl ? `[Clique para ver](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
-      { name: '🖼️ Banner de Aprovado', value: config.bannerAprovadoUrl ? `[Clique para ver](${config.bannerAprovadoUrl})` : '❌ *Padrão ativo*', inline: false },
-      { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
-      { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📣 Canal de Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador (Autorizado a Aprovar)', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo de Aprovado (Dar ao Aprovar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
-      { name: '⏱️ Tempo por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
-      { name: '❓ Total de Perguntas', value: `\`${config.perguntas.length}\` pergunta(s) ativa(s)`, inline: false }
+      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : 'Não definida', inline: false },
+      { name: '📡 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : 'Não definido', inline: false },
+      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : 'Não definido', inline: false },
+      { name: '👮 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : 'Não definido', inline: false },
+      { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
+      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
+      { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false }
     );
 }
 
@@ -775,41 +800,65 @@ function gerarBotoesVisualTextos() {
         ])
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
 
-function gerarEmbedDefinirConfig() {
+function gerarEmbedCanaisCategoria() {
   return new EmbedBuilder()
-    .setTitle('🛠️ Definir Canais e Cargos')
-    .setDescription('Utilize os menus abaixo para associar os canais e cargos do sistema.')
+    .setTitle('📁 Configurar Canais e Categoria')
     .setColor(config.painelCorHex)
     .addFields(
-      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
-      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📣 Canal Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador (Autorizado a Aprovar)', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo de Aprovado (Dar ao aprovar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
+      { name: '📁 Categoria dos recrutamentos', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: false },
+      { name: '📄 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: false },
+      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: false }
     );
 }
 
-function gerarSelectsDefinirConfig() {
+function gerarSelectsCanaisCategoria() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+      new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a categoria').setChannelTypes(ChannelType.GuildCategory)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a Categoria do Ticket').setChannelTypes(ChannelType.GuildCategory)
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📄 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
+      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📢 Selecione o canal de anúncios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo autorizado a Aprovar')
+      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('page_cargos').setLabel('Próximo: Cargos ➡️').setStyle(ButtonStyle.Primary)
+    )
+  ];
+}
+
+function gerarEmbedCargos() {
+  return new EmbedBuilder()
+    .setTitle('🛡️ Configurar Cargos')
+    .setColor(config.painelCorHex)
+    .addFields(
+      { name: '🎖️ Cargo de aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
+      { name: '🛡️ Cargo de recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false }
+    );
+}
+
+function gerarSelectsCargos() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('🎖️ Selecione os cargos de aprovado').setMinValues(0).setMaxValues(5)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_remover').setPlaceholder('🗑️ Selecione os cargos a remover').setMinValues(0).setMaxValues(5)
+    ),
+    new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('🛡️ Selecione o cargo de recrutador')
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('page_canais').setLabel('⬅️ Anterior: Canais').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
@@ -845,7 +894,7 @@ function gerarBotoesGerenciarPerguntas() {
         ])
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
     )
   ];
 }
