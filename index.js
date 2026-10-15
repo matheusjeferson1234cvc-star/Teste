@@ -226,20 +226,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // MENU PRINCIPAL DE NAVEGAÇÃO
-    if (customId === 'menu_navegacao_principal') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral() });
-    }
-
-    // BOTÃO "Config" / "⚙️ Configuração do Recrutamento" (TELA DA SUA IMAGEM)
-    if (customId === 'abrir_config_painel' || customId === 'menu_config_geral') {
+    if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
       if (!isDonoOuAdmin(interaction)) {
         return interaction.reply({
-          content: '❌ **Acesso negado!** Apenas o Dono ou Administradores podem acessar as configurações.',
+          content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem acessar as configurações.',
           ephemeral: true
         });
       }
+
+      if (interaction.replied || interaction.deferred) {
+        return interaction.followUp({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral(), ephemeral: true });
+      } else if (customId === 'abrir_config_painel') {
+        return interaction.reply({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral(), ephemeral: true });
+      } else {
+        return interaction.update({ embeds: [gerarEmbedMenuNavegacao()], components: gerarBotoesConfigGeral() });
+      }
+    }
+
+    if (customId === 'menu_config_geral') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
 
       const rowVoltar = [
         new ActionRowBuilder().addComponents(
@@ -247,13 +252,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         )
       ];
 
-      if (interaction.replied || interaction.deferred) {
-        return interaction.followUp({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar, ephemeral: true });
-      } else if (customId === 'abrir_config_painel') {
-        return interaction.reply({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar, ephemeral: true });
-      } else {
-        return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar });
-      }
+      return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: rowVoltar });
     }
 
     if (customId === 'iniciar_formulario') {
@@ -379,6 +378,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
+    // EXIBE MENU PARA SELECIONAR E REMOVER UMA PERGUNTA ESPECÍFICA
+    if (customId === 'btn_rem_pergunta_especifica') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
+      if (config.perguntas.length === 0) {
+        return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
+      }
+
+      const options = config.perguntas.map((p, index) => ({
+        label: `Pergunta ${index + 1}`,
+        description: p.length > 50 ? p.substring(0, 47) + '...' : p,
+        value: index.toString()
+      }));
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('select_remover_pergunta_especifica')
+        .setPlaceholder('🗑️ Selecione qual pergunta deseja remover')
+        .addOptions(options);
+
+      const rowSelect = new ActionRowBuilder().addComponents(selectMenu);
+      const rowVoltar = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embedRemover = new EmbedBuilder()
+        .setTitle('🗑️ Remover Pergunta Específica')
+        .setDescription('Selecione abaixo qual pergunta deseja excluir permanentemente do formulário:')
+        .setColor(config.painelCorHex);
+
+      return interaction.update({ embeds: [embedRemover], components: [rowSelect, rowVoltar] });
+    }
+
     if (customId === 'btn_ver_perguntas') {
       const embedPerguntas = new EmbedBuilder().setTitle('📋 Perguntas do Recrutamento').setColor(config.painelCorHex);
       if (config.perguntas.length === 0) {
@@ -489,6 +520,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     const customId = interaction.customId;
+
+    // AÇÃO DE REMOVER A PERGUNTA ESCOLHIDA NO MENU
+    if (customId === 'select_remover_pergunta_especifica') {
+      const indexRemover = parseInt(interaction.values[0], 10);
+      if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < config.perguntas.length) {
+        config.perguntas.splice(indexRemover, 1);
+        await sincronizarPainelPublico(interaction.guild);
+      }
+      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
+    }
+
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
     if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
@@ -735,7 +777,6 @@ function gerarEmbedMenuNavegacao() {
     .setColor(config.painelCorHex);
 }
 
-// TELA IDENTICA À SUA IMAGEM
 function gerarEmbedStatusConfiguracoes() {
   return new EmbedBuilder()
     .setTitle('⚙️ Configuração do Recrutamento')
@@ -874,11 +915,13 @@ function gerarEmbedGerenciarPerguntas() {
     );
 }
 
+// BOTOES DE GERENCIAR PERGUNTAS INCLUINDO A OPÇÃO DE REMOVER UMA ESPECÍFICA
 function gerarBotoesGerenciarPerguntas() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('btn_rem_pergunta_especifica').setLabel('🗑️ Remover Específica').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
     ),
     new ActionRowBuilder().addComponents(
