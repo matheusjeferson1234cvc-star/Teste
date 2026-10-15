@@ -54,6 +54,13 @@ const config = {
 
 const sessoesCandidatos = new Map();
 
+// Função que verifica estritamente se o usuário é Dono do servidor ou Administrador
+function isDonoOuAdmin(interaction) {
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
+  const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
+  return isOwner || isAdmin;
+}
+
 // Sincroniza o painel público automaticamente
 async function sincronizarPainelPublico(guild) {
   if (!config.painelChannelId || !config.painelMessageId) return;
@@ -185,6 +192,10 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'recrutamento') {
+      if (!isDonoOuAdmin(interaction)) {
+        return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem usar este comando.', ephemeral: true });
+      }
+
       await interaction.deferReply({ ephemeral: true });
 
       const msg = await interaction.channel.send({
@@ -199,6 +210,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.commandName === 'configuracao') {
+      if (!isDonoOuAdmin(interaction)) {
+        return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem abrir as configurações.', ephemeral: true });
+      }
+
       return interaction.reply({
         embeds: [gerarEmbedStatusConfiguracoes()],
         components: gerarBotoesConfigGeral(),
@@ -211,11 +226,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    if (customId === 'menu_config_geral') {
-      return interaction.update({
-        embeds: [gerarEmbedStatusConfiguracoes()],
-        components: gerarBotoesConfigGeral()
-      });
+    // BLOQUEIO TOTAL DAS CONFIGURAÇÕES PARA QUEM NÃO É ADMIN/DONO
+    if (customId === 'abrir_config_painel' || customId === 'menu_config_geral') {
+      if (!isDonoOuAdmin(interaction)) {
+        return interaction.reply({
+          content: '❌ **Acesso negado!** Apenas o Dono ou membros com cargo de **Administrador** no servidor podem acessar as configurações do bot.',
+          ephemeral: true
+        });
+      }
+
+      if (interaction.replied || interaction.deferred) {
+        return interaction.followUp({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral(), ephemeral: true });
+      } else if (customId === 'abrir_config_painel') {
+        return interaction.reply({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral(), ephemeral: true });
+      } else {
+        return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes()], components: gerarBotoesConfigGeral() });
+      }
     }
 
     if (customId === 'iniciar_formulario') {
@@ -235,18 +261,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'menu_visual_textos') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
       return interaction.update({ embeds: [gerarEmbedVisualTextos()], components: gerarBotoesVisualTextos() });
     }
 
     if (customId === 'menu_definir_config') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
       return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
     }
 
     if (customId === 'menu_gerenciar_perguntas') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
     if (customId === 'btn_editar_painel') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
       const modal = new ModalBuilder()
         .setCustomId('modal_editar_painel')
         .setTitle('Personalizar Título, Descrição & Banner');
@@ -283,6 +314,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'btn_editar_banner_aprovacao') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
       const modal = new ModalBuilder()
         .setCustomId('modal_editar_banner_aprovacao')
         .setTitle('Banner de Aprovação');
@@ -300,6 +333,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'btn_add_pergunta') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
       if (config.perguntas.length >= 20) {
         return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
       }
@@ -317,6 +352,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (customId === 'btn_rem_pergunta') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
       if (config.perguntas.length === 0) {
         return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada.', ephemeral: true });
       }
@@ -340,14 +377,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
     }
 
-    // APROVAÇÃO E REPROVAÇÃO DE CANDIDATO
+    // AVALIAÇÃO DE FORMULÁRIOS: PERMITE ADMINS OU QUEM TIVER O CARGO ESCOLHIDO NAS CONFIGS
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
-      const isOwner = interaction.guild.ownerId === interaction.user.id;
-      const hasRecruiterRole = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);
+      const hasCargoRecrutador = config.cargoRecrutador && interaction.member.roles.cache.has(config.cargoRecrutador);
 
-      if (!isOwner && !hasRecruiterRole) {
+      if (!isDonoOuAdmin(interaction) && !hasCargoRecrutador) {
         return interaction.reply({
-          content: '❌ **Acesso negado!** Apenas recrutadores autorizados ou o dono do servidor podem aprovar/reprovar candidaturas.',
+          content: '❌ **Acesso negado!** Apenas o Dono, Administradores ou quem tem o cargo selecionado de **Recrutador** podem aprovar/reprovar candidaturas.',
           ephemeral: true
         });
       }
@@ -429,8 +465,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // MENUS DE SELEÇÃO
+  // MENUS DE SELEÇÃO DAS CONFIGURAÇÕES (BLOQUEADO PARA ADMIN/DONO)
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
+    if (!isDonoOuAdmin(interaction)) {
+      return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores podem alterar configurações.', ephemeral: true });
+    }
+
     const customId = interaction.customId;
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
@@ -658,10 +698,10 @@ function gerarEmbedPainelPrincipal(guild) {
   return embed;
 }
 
-// BOTAO UNICO DE FORMULARIO NO PAINEL PUBLICO (SEM BOTOES DE CONFIGURACAO EXPOSTOS)
 function gerarBotaoFormularioComConfig() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -680,8 +720,8 @@ function gerarEmbedStatusConfiguracoes() {
       { name: '📁 Categoria dos Tickets', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
       { name: '📢 Canal de Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
       { name: '📣 Canal de Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '👑 Cargo Recrutador (Autorizado a Aprovar)', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar ao Aprovar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
       { name: '⏱️ Tempo por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
       { name: '❓ Total de Perguntas', value: `\`${config.perguntas.length}\` pergunta(s) ativa(s)`, inline: false }
     );
@@ -690,7 +730,7 @@ function gerarEmbedStatusConfiguracoes() {
 function gerarBotoesConfigGeral() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Configurações Definidas').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Config').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('menu_visual_textos').setLabel('Visual & Textos').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Gerenciar perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
@@ -749,8 +789,8 @@ function gerarEmbedDefinirConfig() {
       { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
       { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
       { name: '📣 Canal Anúncios (Aprovados)', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '⭐ Cargo de Aprovado (Dar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
+      { name: '👑 Cargo Recrutador (Autorizado a Aprovar)', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo de Aprovado (Dar ao aprovar)', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false }
     );
 }
 
@@ -766,7 +806,7 @@ function gerarSelectsDefinirConfig() {
       new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o Canal de Relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo de Recrutador')
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o Cargo autorizado a Aprovar')
     ),
     new ActionRowBuilder().addComponents(
       new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o Cargo para DAR ao Aprovar').setMinValues(0).setMaxValues(5)
