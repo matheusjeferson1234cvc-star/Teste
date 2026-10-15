@@ -1,17 +1,13 @@
 {
   "name": "bot-recrutamento-teste",
   "version": "1.0.0",
-  "description": "Bot de teste isolado para sistema de recrutamento",
+  "description": "Bot de recrutamento teste",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
-  }
-}
-ord.js": "^14.14.1",
     "dotenv": "^16.4.5"
   }
 }
