@@ -7,6 +7,7 @@ const {
   ButtonStyle,
   RoleSelectMenuBuilder,
   ChannelSelectMenuBuilder,
+  StringSelectMenuBuilder,
   ChannelType,
   ModalBuilder,
   TextInputBuilder,
@@ -30,7 +31,7 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
-// Cache das configurações em memória
+// Cache das configurações do sistema
 const config = {
   categoriaId: null,
   relatorioChannelId: null,
@@ -38,44 +39,66 @@ const config = {
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  perguntas: []
+  tempoPerguntaMs: 60000,
+  tempoPerguntaTexto: '1 minuto',
+  perguntas: [],
+  painelTitulo: '📋 │ Central de Recrutamento',
+  painelDescricao: 'Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.',
+  painelBannerUrl: null,
+  painelChannelId: null,
+  painelMessageId: null
 };
 
-// Sessões ativas de recrutamento nos tickets
 const sessoesCandidatos = new Map();
 
-// Função para avançar perguntas (por resposta ou por tempo esgotado)
+// Atualização automática do painel público
+async function sincronizarPainelPublico(guild) {
+  if (!config.painelChannelId || !config.painelMessageId) return;
+
+  try {
+    const canal = await client.channels.fetch(config.painelChannelId).catch(() => null);
+    if (!canal) return;
+
+    const mensagem = await canal.messages.fetch(config.painelMessageId).catch(() => null);
+    if (!mensagem) return;
+
+    await mensagem.edit({
+      embeds: [gerarEmbedPainelPrincipal(guild || canal.guild)],
+      components: [gerarBotaoFormularioComConfig()]
+    });
+  } catch (err) {
+    console.error('Erro ao sincronizar painel público:', err);
+  }
+}
+
+// Avançar perguntas do formulário
 async function avancarPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
 
   if (sessao.timer) clearTimeout(sessao.timer);
 
-  // Etapa 0: Processou a Foto do RG -> Ir para a Pergunta 1
   if (sessao.step === 0) {
     if (config.perguntas.length === 0) {
       return finalizarRecrutamento(channel, user, sessao);
     }
     sessao.step = 1;
-    await channel.send(`📌 **Pergunta 1/${config.perguntas.length}:**\n${config.perguntas[0]}\n\n⏱️ *Você tem 60 segundos para responder.*`);
+    await channel.send(`📋 **Pergunta 1/${config.perguntas.length}:**\n> ${config.perguntas[0]}\n\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`);
     iniciarTimerPergunta(channelId, channel, user);
     return;
   }
 
-  // Avançar para a próxima pergunta
   if (sessao.step < config.perguntas.length) {
     const proximaPergunta = config.perguntas[sessao.step];
     sessao.step += 1;
 
-    await channel.send(`📌 **Pergunta ${sessao.step}/${config.perguntas.length}:**\n${proximaPergunta}\n\n⏱️ *Você tem 60 segundos para responder.*`);
+    await channel.send(`📋 **Pergunta ${sessao.step}/${config.perguntas.length}:**\n> ${proximaPergunta}\n\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`);
     iniciarTimerPergunta(channelId, channel, user);
   } else {
-    // Fim de todas as perguntas
     await finalizarRecrutamento(channel, user, sessao);
   }
 }
 
-// Cronômetro de 60s por pergunta/etapa
 function iniciarTimerPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -85,35 +108,33 @@ function iniciarTimerPergunta(channelId, channel, user) {
 
     if (sessao.step === 0) {
       sessao.rgImageUrl = null;
-      await channel.send('⚠️ **Tempo esgotado para o envio do RG!** Etapa sem imagem de RG.');
+      await channel.send('⚠️ **Tempo de envio do RG esgotado!** Avançando sem foto...');
     } else {
       const perguntaAtual = config.perguntas[sessao.step - 1];
       sessao.respostas.push({
         pergunta: perguntaAtual,
         resposta: '⚠️ *Tempo esgotado (não respondeu)*'
       });
-      await channel.send(`⚠️ **Tempo esgotado para a Pergunta ${sessao.step}!** Pergunta anulada e avançando...`);
+      await channel.send(`⚠️ **Tempo esgotado para a Pergunta ${sessao.step}!** Pergunta anulada.`);
     }
 
     await avancarPergunta(channelId, channel, user);
-  }, 60000); // 60 segundos
+  }, config.tempoPerguntaMs);
 }
 
-// Finaliza o recrutamento, envia o relatório e deleta o ticket em 5s
 async function finalizarRecrutamento(channel, user, sessao) {
   if (sessao.timer) clearTimeout(sessao.timer);
 
   await enviarRelatorio(user, sessao);
   sessoesCandidatos.delete(channel.id);
 
-  await channel.send('🎉 **Recrutamento finalizado!** Suas respostas foram enviadas para avaliação da equipe.\n🔒 **Este ticket será fechado e apagado automaticamente em 5 segundos...**');
+  await channel.send(`🎉 **Recrutamento concluído com sucesso, ${user}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
 
   setTimeout(() => {
     channel.delete().catch(() => null);
   }, 5000);
 }
 
-// Evento de Inicialização
 client.once(Events.ClientReady, async (c) => {
   console.log('==================================================');
   console.log(`🤖 BOT ONLINE: ${c.user.tag} (ID:${c.user.id})`);
@@ -126,7 +147,7 @@ client.once(Events.ClientReady, async (c) => {
   const commands = [
     new SlashCommandBuilder()
       .setName('recrutamento')
-      .setDescription('Envia o painel de recrutamento')
+      .setDescription('Envia o painel oficial de recrutamento')
   ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(cleanToken);
@@ -140,36 +161,33 @@ client.once(Events.ClientReady, async (c) => {
       );
     }
     await rest.put(Routes.applicationCommands(cleanClientId), { body: commands });
-    console.log('✅ Comandos registrados com sucesso!');
+    console.log('✅ Comandos registrados!');
   } catch (err) {
     console.error('❌ Erro nos comandos:', err.message);
   }
   console.log('==================================================');
 });
 
-// Manipulador de Interações (Botões, Modais, Select Menus e Comandos)
+// Interações do Bot
 client.on(Events.InteractionCreate, async (interaction) => {
+  // Executou /recrutamento ou /painel -> Publica o Painel DIRETO no canal
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'recrutamento' || interaction.commandName === 'painel') {
-      await interaction.reply({
-        embeds: [gerarEmbedConfigGeral()],
-        components: gerarBotoesConfigGeral(),
-        ephemeral: true
+      const msg = await interaction.channel.send({
+        embeds: [gerarEmbedPainelPrincipal(interaction.guild)],
+        components: [gerarBotaoFormularioComConfig()]
       });
+
+      config.painelChannelId = msg.channel.id;
+      config.painelMessageId = msg.id;
+
+      return interaction.reply({ content: '✅ Painel de recrutamento enviado diretamente para este canal!', ephemeral: true });
     }
     return;
   }
 
   if (interaction.isButton()) {
     const customId = interaction.customId;
-
-    if (customId === 'enviar_painel_recrutamento') {
-      await interaction.channel.send({
-        embeds: [gerarEmbedPainelPrincipal()],
-        components: [gerarBotaoFormularioComConfig()]
-      });
-      return interaction.reply({ content: '✅ Painel enviado com sucesso.', ephemeral: true });
-    }
 
     if (customId === 'abrir_config_painel') {
       return interaction.reply({
@@ -179,7 +197,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Modal inicial: apenas Nome e ID do Personagem
     if (customId === 'iniciar_formulario') {
       const modal = new ModalBuilder()
         .setCustomId('modal_iniciar_recrutamento')
@@ -196,16 +213,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    if (customId === 'btn_finalizar_recrutamento') {
-      const sessao = sessoesCandidatos.get(interaction.channel.id);
-      if (sessao && sessao.timer) clearTimeout(sessao.timer);
-      sessoesCandidatos.delete(interaction.channel.id);
-
-      await interaction.reply('🔒 Encerrando este canal de recrutamento...');
-      setTimeout(() => interaction.channel.delete().catch(() => null), 3000);
-      return;
-    }
-
     if (customId === 'menu_config_geral') {
       return interaction.update({ embeds: [gerarEmbedConfigGeral()], components: gerarBotoesConfigGeral() });
     }
@@ -218,6 +225,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
+    if (customId === 'btn_editar_painel') {
+      const modal = new ModalBuilder()
+        .setCustomId('modal_editar_painel')
+        .setTitle('Personalizar Painel');
+
+      const inputTitulo = new TextInputBuilder()
+        .setCustomId('p_titulo')
+        .setLabel('Título do Painel')
+        .setValue(config.painelTitulo)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const inputDesc = new TextInputBuilder()
+        .setCustomId('p_desc')
+        .setLabel('Descrição do Painel')
+        .setValue(config.painelDescricao)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+      const inputBanner = new TextInputBuilder()
+        .setCustomId('p_banner')
+        .setLabel('URL da Imagem / Banner do Topo')
+        .setPlaceholder('https://...')
+        .setValue(config.painelBannerUrl || '')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(inputTitulo),
+        new ActionRowBuilder().addComponents(inputDesc),
+        new ActionRowBuilder().addComponents(inputBanner)
+      );
+
+      return interaction.showModal(modal);
+    }
+
     if (customId === 'btn_add_pergunta') {
       if (config.perguntas.length >= 20) {
         return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
@@ -227,7 +270,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const inputPergunta = new TextInputBuilder()
         .setCustomId('texto_pergunta')
         .setLabel('Pergunta')
-        .setPlaceholder('digite a pergunta do recrutamento...')
+        .setPlaceholder('Digite a pergunta do recrutamento...')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true);
 
@@ -240,13 +283,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada.', ephemeral: true });
       }
       config.perguntas.pop();
+      await sincronizarPainelPublico(interaction.guild);
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
     if (customId === 'btn_ver_perguntas') {
-      const embedPerguntas = new EmbedBuilder().setTitle('Perguntas do Recrutamento').setColor(0x2b2d31);
+      const embedPerguntas = new EmbedBuilder().setTitle('📋 Perguntas do Recrutamento').setColor(0x2b2d31);
       if (config.perguntas.length === 0) {
-        embedPerguntas.setDescription('❌ **Nenhuma pergunta cadastrada.**\n\nAdicione uma pergunta para começar a configurar o formulário.');
+        embedPerguntas.setDescription('❌ **Nenhuma pergunta cadastrada.**');
       } else {
         const lista = config.perguntas.map((p, i) => `**${i + 1}.**${p}`).join('\n\n');
         embedPerguntas.setDescription(lista);
@@ -285,7 +329,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
+  if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
     const customId = interaction.customId;
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
@@ -294,13 +338,40 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId === 'select_cargos_remover') config.cargosRemover = interaction.values;
     if (customId === 'select_cargo_recrutador') config.cargoRecrutador = interaction.values[0];
 
+    if (customId === 'select_tempo_pergunta') {
+      const valorMs = parseInt(interaction.values[0], 10);
+      config.tempoPerguntaMs = valorMs;
+
+      const tempoMinutos = valorMs / 60000;
+      if (tempoMinutos < 1) {
+        config.tempoPerguntaTexto = `${valorMs / 1000} segundos`;
+      } else if (tempoMinutos === 1) {
+        config.tempoPerguntaTexto = '1 minuto';
+      } else {
+        config.tempoPerguntaTexto = `${tempoMinutos} minutos`;
+      }
+    }
+
+    await sincronizarPainelPublico(interaction.guild);
     return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
   }
 
   if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'modal_editar_painel') {
+      config.painelTitulo = interaction.fields.getTextInputValue('p_titulo');
+      config.painelDescricao = interaction.fields.getTextInputValue('p_desc');
+      const bannerInput = interaction.fields.getTextInputValue('p_banner');
+      config.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
+
+      await sincronizarPainelPublico(interaction.guild);
+      return interaction.update({ embeds: [gerarEmbedDefinirConfig()], components: gerarSelectsDefinirConfig() });
+    }
+
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
       config.perguntas.push(novaPergunta);
+
+      await sincronizarPainelPublico(interaction.guild);
       return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas()], components: gerarBotoesGerenciarPerguntas() });
     }
 
@@ -337,13 +408,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           timer: null
         });
 
-        const rowFinalizar = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('btn_finalizar_recrutamento').setLabel('Finalizar Recrutamento').setStyle(ButtonStyle.Danger)
-        );
-
         await canalTicket.send({
-          content: `Bem-vindo(a) ${user}!\n👤 **Candidato:** ${nomeId}\n\n📌 **Para iniciar o formulário de recrutamento, envie a foto do seu RG abaixo.**\n⏱️ *Você tem 60 segundos para responder.*`,
-          components: [rowFinalizar]
+          content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${config.tempoPerguntaTexto} para responder.*`
         });
 
         iniciarTimerPergunta(canalTicket.id, canalTicket, user);
@@ -357,7 +423,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Leitura de mensagens enviadas nos canais de ticket
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -366,22 +431,19 @@ client.on(Events.MessageCreate, async (message) => {
 
   if (sessao.timer) clearTimeout(sessao.timer);
 
-  // Etapa 0: Imagem do RG
   if (sessao.step === 0) {
     const anexo = message.attachments.first();
     if (!anexo || !anexo.contentType?.startsWith('image/')) {
-      await message.reply('❌ Por favor, envie uma **imagem válida** contendo a foto do seu RG.');
+      await message.reply('❌ Por favor, envie uma **imagem válida** do seu RG.');
       iniciarTimerPergunta(message.channel.id, message.channel, message.author);
       return;
     }
 
     sessao.rgImageUrl = anexo.url;
-    await message.reply('✅ **Foto do RG registrada com sucesso!**');
     await avancarPergunta(message.channel.id, message.channel, message.author);
     return;
   }
 
-  // Etapas 1 a N: Respostas das perguntas sequenciais
   if (sessao.step > 0 && sessao.step <= config.perguntas.length) {
     const perguntaAtual = config.perguntas[sessao.step - 1];
     sessao.respostas.push({
@@ -393,7 +455,6 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// Envio do Relatório para o Canal do ADM
 async function enviarRelatorio(user, sessao) {
   if (!config.relatorioChannelId) return;
 
@@ -407,15 +468,15 @@ async function enviarRelatorio(user, sessao) {
     .setImage(sessao.rgImageUrl)
     .addFields(
       { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
-      { name: '🆔 Nome & ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
-      { name: '‎', value: '─── **Respostas do Formulário** ───' }
+      { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
+      { name: '‎', value: '─── **Perguntas & Respostas** ───' }
     )
     .setTimestamp()
-    .setFooter({ text: 'Cetus Manager • Sistema de Aprovação' });
+    .setFooter({ text: 'Sistema de Aprovação • Cetus' });
 
   sessao.respostas.forEach((r, idx) => {
     embed.addFields({
-      name: `❓ P${idx + 1}: ${r.pergunta}`,
+      name: `❓ P${idx + 1}:${r.pergunta}`,
       value: `> ${r.resposta || '*Sem resposta*'}`
     });
   });
@@ -428,35 +489,37 @@ async function enviarRelatorio(user, sessao) {
   await canal.send({ embeds: [embed], components: [row] });
 }
 
-// Visual idêntico ao vídeo para os Embeds da Central
-function gerarEmbedPainelPrincipal() {
-  return new EmbedBuilder()
-    .setTitle('📜 │ Central de Recrutamento')
-    .setDescription(
-      'Bem-vindo ao **Sistema Oficial de Recrutamento**.\n' +
-      'Se deseja ingressar na organização, clique no botão abaixo e preencha o formulário.\n\n' +
-      '```yaml\n' +
-      '• Certifique-se de responder com atenção.\n' +
-      '• Envie a foto do seu RG assim que o ticket abrir.\n' +
-      '```'
-    )
+function gerarEmbedPainelPrincipal(guild) {
+  const embed = new EmbedBuilder()
+    .setTitle(config.painelTitulo)
+    .setDescription(config.painelDescricao)
     .setColor(0x2b2d31)
     .addFields({
-      name: '☑️ Etapas do Processo',
+      name: '🛡️ Etapas do Processo',
       value: 
-        '✔️ **Preenchimento do formulário**\n' +
-        '⏱️ Você terá **1 minuto** para responder cada pergunta\n' +
-        '🔍 **Análise da candidatura**\n' +
-        '🎙️ **Entrevista com a equipe**\n' +
-        '🏆 **Resultado final**'
+        `• 📝 Preenchimento do formulário\n` +
+        `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
+        `• 🔍 Análise da candidatura\n` +
+        `• 🎶🎤 Entrevista com a equipe\n` +
+        `• ✅ Resultado final`
     })
-    .setFooter({ text: 'Organizações • Roleplay | Desenvolvido para Cetus' });
+    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Álvaro' });
+
+  if (guild && guild.iconURL()) {
+    embed.setThumbnail(guild.iconURL({ dynamic: true }));
+  }
+
+  if (config.painelBannerUrl) {
+    embed.setImage(config.painelBannerUrl);
+  }
+
+  return embed;
 }
 
 function gerarBotaoFormularioComConfig() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('📝 Formulário').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_painel').setLabel('⚙️').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -469,8 +532,8 @@ function gerarEmbedConfigGeral() {
       name: '📌 Menu de Navegação',
       value: 
         '⚙️ **Configuração** — visualize o status atual dos canais/cargos.\n' +
-        '❓ **Gerenciar perguntas** — adicione ou remova as perguntas.\n' +
-        '🛠️ **Definir configurações** — altere canais de relatório e cargos.'
+        '🛠️ **Definir configurações** — altere canais, cargos, tempo e personalize o visual/banner.\n' +
+        '❓ **Gerenciar perguntas** — adicione ou remova as perguntas do formulário.'
     })
     .setFooter({ text: 'Sistema Admin • Cetus' });
 }
@@ -479,32 +542,33 @@ function gerarBotoesConfigGeral() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('menu_config_geral').setLabel('⚙️ Configuração').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('⚙️ Definir configurações').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('🛠️ Definir configurações').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('❓ Gerenciar perguntas').setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('enviar_painel_recrutamento').setLabel('📤 Enviar Painel').setStyle(ButtonStyle.Success)
     )
   ];
 }
 
 function gerarEmbedDefinirConfig() {
   return new EmbedBuilder()
-    .setTitle('⚙️ Definir Configurações')
-    .setDescription('Confira e altere os canais e cargos do sistema de recrutamento.\n')
+    .setTitle('🛠️ Definir Configurações & Visual')
+    .setDescription('Configure os canais, cargos, tempo e edite o texto/banner do painel.\n*Todas as alterações sincronizam automaticamente no painel público!*\n')
     .setColor(0x2b2d31)
     .addFields(
-      { name: '📁 Categoria dos recrutamentos', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: false },
-      { name: '📢 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: true },
-      { name: '👑 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
-      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false }
+      { name: '🎨 Título do Painel', value: `\`${config.painelTitulo}\``, inline: false },
+      { name: '🖼️ Banner do Topo', value: config.painelBannerUrl ? `[Clique para ver o banner](${config.painelBannerUrl})` : '❌ *Nenhum banner configurado*', inline: false },
+      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: true },
+      { name: '📢 Canal Relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: true },
+      { name: '👑 Cargo Recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
+      { name: '⭐ Cargo Aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
+      { name: '⏱️ Tempo p/ Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false }
     );
 }
 
 function gerarSelectsDefinirConfig() {
   return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('🎨 Editar Textos & Banner').setStyle(ButtonStyle.Primary)
+    ),
     new ActionRowBuilder().addComponents(
       new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a categoria').setChannelTypes(ChannelType.GuildCategory)
     ),
@@ -512,10 +576,23 @@ function gerarSelectsDefinirConfig() {
       new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📢 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
     ),
     new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📢 Selecione o canal de anúncios').setChannelTypes(ChannelType.GuildText)
+      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('👑 Selecione o cargo de Recrutador')
     ),
     new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione os cargos de aprovado').setMinValues(0).setMaxValues(5)
+      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('⭐ Selecione o cargo de Aprovado').setMinValues(0).setMaxValues(5)
+    ),
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('select_tempo_pergunta')
+        .setPlaceholder('⏱️ Selecione o tempo por pergunta')
+        .addOptions([
+          { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
+          { label: '1 Minuto (Padrão)', value: '60000', description: '1 minuto por pergunta' },
+          { label: '2 Minutos', value: '120000', description: '2 minutos por pergunta' },
+          { label: '3 Minutos', value: '180000', description: '3 minutos por pergunta' },
+          { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
+          { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
+        ])
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('menu_config_geral').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
