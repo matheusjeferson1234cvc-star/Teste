@@ -12,7 +12,10 @@ const {
   TextInputBuilder,
   TextInputStyle,
   Events,
-  Partials
+  Partials,
+  REST,
+  Routes,
+  SlashCommandBuilder
 } = require('discord.js');
 require('dotenv').config();
 
@@ -26,27 +29,41 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
-// Cache local em memória (para o código de teste sem banco de dados)
+// Cache local em memória
 const config = {
   relatorioChannelId: null,
   anunciosChannelId: null,
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  perguntas: [] // Máximo 20 perguntas configuráveis
+  perguntas: []
 };
 
-// Controle de sessões dos candidatos
-// userId -> { step: number, respostas: [], rgImageUrl: string }
 const sessoesCandidatos = new Map();
 
-client.once(Events.ClientReady, (c) => {
+// REGISTRAR COMANDOS AUTOMATICAMENTE AO LIGAR
+client.once(Events.ClientReady, async (c) => {
   console.log(`🤖 Bot de recrutamento rodando em: ${c.user.tag}`);
+
+  try {
+    const commands = [
+      new SlashCommandBuilder()
+        .setName('painel')
+        .setDescription('Abre o painel de configuração do recrutamento')
+    ].map(command => command.toJSON());
+
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+    console.log('🔄 Registrando comando /painel...');
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    console.log('✅ Comando /painel registrado com sucesso!');
+  } catch (error) {
+    console.error('❌ Erro ao registrar comando /painel:', error);
+  }
 });
 
 // Interações do Bot
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Comando Slash /painel
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'painel') {
       await interaction.reply({
@@ -58,11 +75,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // --- NAVEGAÇÃO E BOTÕES DO PAINEL ---
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // Enviar o painel oficial no canal
     if (customId === 'enviar_painel_recrutamento') {
       await interaction.channel.send({
         embeds: [gerarEmbedPainelPrincipal()],
@@ -71,10 +86,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: '✅ Painel de recrutamento enviado!', ephemeral: true });
     }
 
-    // Candidato clica em Formulário
     if (customId === 'iniciar_formulario') {
       sessoesCandidatos.set(interaction.user.id, {
-        step: 0, // 0 = RG
+        step: 0,
         respostas: [],
         rgImageUrl: null
       });
@@ -96,7 +110,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // Navegação Interna do Painel (Usa .update() para a tela não sumir)
     if (customId === 'menu_config_geral') {
       return interaction.update({
         embeds: [gerarEmbedConfigGeral()],
@@ -118,7 +131,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Modal para adicionar pergunta
     if (customId === 'btn_add_pergunta') {
       if (config.perguntas.length >= 20) {
         return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
@@ -138,7 +150,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // Remover última pergunta
     if (customId === 'btn_rem_pergunta') {
       if (config.perguntas.length === 0) {
         return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
@@ -150,13 +161,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Ver perguntas cadastradas
     if (customId === 'btn_ver_perguntas') {
       const lista = config.perguntas.map((p, i) => `**${i + 1}.** ${p}`).join('\n') || 'Nenhuma pergunta cadastrada.';
       return interaction.reply({ content: `📋 **Perguntas Atuais:**\n\n${lista}`, ephemeral: true });
     }
 
-    // Aprovar / Reprovar na aba de relatório
     if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
       const [acao, userId] = customId.split('_');
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
@@ -190,7 +199,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // --- SELEÇÃO DE MENUS E SELETORES (Sempre atualiza sem recriar mensagem) ---
   if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
     const customId = interaction.customId;
 
@@ -206,7 +214,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // Submit de Modais
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
@@ -220,14 +227,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// --- FLUXO DE PERGUNTAS E RG NO PRIVADO (DM) ---
+// DM
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || message.guild) return;
 
   const sessao = sessoesCandidatos.get(message.author.id);
   if (!sessao) return;
 
-  // Etapa 0: Envio da Foto do RG
   if (sessao.step === 0) {
     const anexo = message.attachments.first();
     if (!anexo || !anexo.contentType?.startsWith('image/')) {
@@ -247,7 +253,6 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // Etapa 1 até N: Perguntas sequenciais
   if (sessao.step > 0 && sessao.step <= config.perguntas.length) {
     sessao.respostas.push({
       pergunta: config.perguntas[sessao.step - 1],
@@ -266,7 +271,6 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// Função para postar o relatório no canal configurado
 async function enviarRelatorio(user, sessao) {
   if (!config.relatorioChannelId) return;
 
@@ -295,8 +299,6 @@ async function enviarRelatorio(user, sessao) {
 
   await canal.send({ embeds: [embed], components: [row] });
 }
-
-// --- INTERFACES VISUAIS ---
 
 function gerarEmbedConfigGeral() {
   return new EmbedBuilder()
@@ -369,30 +371,4 @@ function gerarBotoesGerenciarPerguntas() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('⬅️ Voltar').setStyle(ButtonStyle.Secondary)
-    )
-  ];
-}
-
-function gerarEmbedPainelPrincipal() {
-  return new EmbedBuilder()
-    .setTitle('📋 Central de Recrutamento')
-    .setDescription('Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.')
-    .setColor(0x2b2d31)
-    .addFields({
-      name: '✔️ Etapas do Processo',
-      value: '☑️ **Preenchimento do formulário**\n⏱️ Você terá **1 minuto** para responder cada pergunta\n🔍 Análise da candidatura\n🎙️ Entrevista com a equipe\n✅ Resultado final'
-    })
-    .setFooter({ text: 'Organizações • Roleplay' });
-}
-
-function gerarBotaoFormulario() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('📝 Formulário').setStyle(ButtonStyle.Secondary)
-  );
-}
-
-client.login(process.env.DISCORD_TOKEN);
+      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').
