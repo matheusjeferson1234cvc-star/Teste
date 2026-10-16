@@ -20,7 +20,6 @@ const {
   PermissionsBitField,
   MessageFlags
 } = require('discord.js');
-const { InteractionResponseType, ComponentType } = require('discord-api-types/v10');
 require('dotenv').config();
 
 // ==========================================
@@ -89,6 +88,7 @@ const configRegistro = {
 };
 
 const sessoesCandidatos = new Map();
+const sessoesRegistro = new Map();
 
 function isDonoOuAdmin(interaction) {
   if (!interaction.guild) return false;
@@ -570,9 +570,8 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
-
 // ==========================================
-// MÓDULO 2: REGISTRO (FORMULÁRIO V2 VIA REST API)
+// MÓDULO 2: REGISTRO (100% ESTÁVEL E FUNCIONAL)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -582,10 +581,10 @@ function gerarPayloadRegistroV2(guild) {
     `# ${configRegistro.painelTitulo}\n\n` +
     `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
-    `• 📝 Preencha o formulário oficial de registro.\n` +
-    `• 👤 Informe Nome, ID, selecione seu turno e envie o RG numa tela só.\n` +
-    `• 🏷️ Seu nome e cargos serão configurados automaticamente.\n` +
-    `• ✅ Registro concluído de forma instantânea.`;
+    `• 📝 Preencha o formulário de registro.\n` +
+    `• 👤 Informe Nome, ID e Turno no modal.\n` +
+    `• 📸 Envie a foto do seu RG logo em seguida no chat.\n` +
+    `• 🏷️ Seu nome e cargos serão configurados automaticamente.`;
 
   const containerComponents = [];
 
@@ -611,7 +610,7 @@ function gerarPayloadRegistroV2(guild) {
     {
       type: 1,
       components: [
-        { type: 2, style: 2, custom_id: 'abrir_modal_v2_rest', label: 'Registre-se', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_modal_registro_seguro', label: 'Registre-se', emoji: { name: '📝' } },
         { type: 2, style: 2, custom_id: 'abrir_config_registro', emoji: { name: '⚙️' } }
       ]
     },
@@ -1092,7 +1091,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // REGISTRO - ABERTURA VIA REST API v10
+      // REGISTRO
       if (customId === 'abrir_config_registro') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
@@ -1101,76 +1100,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply(payload);
       }
 
-      if (customId === 'abrir_modal_v2_rest') {
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN.trim());
+      if (customId === 'abrir_modal_registro_seguro') {
+        const modal = new ModalBuilder()
+          .setCustomId('modal_registro_submit_estavel')
+          .setTitle('📋 Formulário de Registro');
 
-        await rest.post(Routes.interactionCallback(interaction.id, interaction.token), {
-          body: {
-            type: InteractionResponseType.Modal,
-            data: {
-              title: '📋 Formulário de Registro',
-              custom_id: 'submit_registro_v2_final',
-              components: [
-                {
-                  type: ComponentType.ActionRow,
-                  components: [
-                    {
-                      type: ComponentType.TextInput,
-                      custom_id: 'v2_reg_nome',
-                      label: 'Nome do Personagem',
-                      style: 1,
-                      placeholder: 'Digite apenas o primeiro nome',
-                      required: true
-                    }
-                  ]
-                },
-                {
-                  type: ComponentType.ActionRow,
-                  components: [
-                    {
-                      type: ComponentType.TextInput,
-                      custom_id: 'v2_reg_id',
-                      label: 'ID / Passaporte',
-                      style: 1,
-                      placeholder: 'Digite seu ID',
-                      required: true
-                    }
-                  ]
-                },
-                {
-                  type: ComponentType.ActionRow,
-                  components: [
-                    {
-                      type: ComponentType.StringSelect,
-                      custom_id: 'v2_reg_turno',
-                      placeholder: 'Selecione seu turno',
-                      options: [
-                        { label: 'Manhã', value: 'Manhã', description: 'Turno da manhã', emoji: { name: '🌅' } },
-                        { label: 'Tarde', value: 'Tarde', description: 'Turno da tarde', emoji: { name: '☀️' } },
-                        { label: 'Noite', value: 'Noite', description: 'Turno da noite', emoji: { name: '🌙' } },
-                        { label: 'Madrugada', value: 'Madrugada', description: 'Turno da madrugada', emoji: { name: '🌃' } }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  type: ComponentType.ActionRow,
-                  components: [
-                    {
-                      type: 13,
-                      custom_id: 'v2_reg_foto',
-                      label: 'Foto do Personagem (Opcional)',
-                      description: 'Envie uma imagem PNG, JPG, GIF ou WEBP.',
-                      required: false,
-                      max_files: 1
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        });
-        return;
+        const inputNome = new TextInputBuilder()
+          .setCustomId('reg_nome')
+          .setLabel('Nome do Personagem')
+          .setPlaceholder('Digite apenas o primeiro nome')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const inputId = new TextInputBuilder()
+          .setCustomId('reg_id')
+          .setLabel('ID / Passaporte')
+          .setPlaceholder('Digite seu ID')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        const inputTurno = new TextInputBuilder()
+          .setCustomId('reg_turno')
+          .setLabel('Turno de Atuação')
+          .setPlaceholder('Ex: Manhã / Tarde / Noite / Madrugada')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(inputNome),
+          new ActionRowBuilder().addComponents(inputId),
+          new ActionRowBuilder().addComponents(inputTurno)
+        );
+
+        return interaction.showModal(modal);
       }
 
       if (customId === 'btn_configurar_tag_nome') {
@@ -1251,7 +1213,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // SUBMISSÃO DE MODAIS
-    if (interaction.isModalSubmit() || interaction.customId === 'submit_registro_v2_final') {
+    if (interaction.isModalSubmit()) {
       const customId = interaction.customId;
 
       if (customId === 'modal_editar_painel') {
@@ -1340,55 +1302,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadConfigRegistroV2());
       }
 
-      // SUBMISSÃO DO FORMULÁRIO DE REGISTRO
-      if (customId === 'submit_registro_v2_final') {
-        await interaction.deferReply({ ephemeral: true });
+      // SUBMISSÃO DO REGISTRO SEM ERROS
+      if (customId === 'modal_registro_submit_estavel') {
+        const nomePersonagem = interaction.fields.getTextInputValue('reg_nome');
+        const idPassaporte = interaction.fields.getTextInputValue('reg_id');
+        const turno = interaction.fields.getTextInputValue('reg_turno');
 
-        const nomePersonagem = interaction.fields.getTextInputValue('v2_reg_nome');
-        const idPassaporte = interaction.fields.getTextInputValue('v2_reg_id');
-        const turno = interaction.fields.getTextInputValue('v2_reg_turno') || 'Não informado';
-        
-        let anexoFotoUrl = null;
-        if (interaction.fields.getAttachment) {
-          const anexoObj = interaction.fields.getAttachment('v2_reg_foto');
-          if (anexoObj) anexoFotoUrl = anexoObj.url;
-        }
+        sessoesRegistro.set(interaction.user.id, {
+          nome: nomePersonagem,
+          id: idPassaporte,
+          turno: turno,
+          aguardandoFoto: true
+        });
 
-        const member = interaction.member;
-        const nomeFormatado = `${nomePersonagem} \vert{} ID:${idPassaporte}`;
-        let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
-
-        let nickSucesso = true;
-        if (novoNick.length <= 32) {
-          await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
-        }
-
-        if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
-        if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
-
-        if (configRegistro.logChannelId) {
-          const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
-          if (canalLog) {
-            const embedLog = new EmbedBuilder()
-              .setTitle('📝 Novo Registro Efetuado')
-              .setColor(0x2ecc71)
-              .addFields(
-                { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
-                { name: '🆔 Personagem / ID', value: `\`${nomePersonagem}\` | \`${idPassaporte}\``, inline: true },
-                { name: '⏱️ Turno', value: `\`${turno}\``, inline: true },
-                { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
-              )
-              .setTimestamp();
-
-            if (anexoFotoUrl) {
-              embedLog.setImage(anexoFotoUrl);
-            }
-
-            await canalLog.send({ embeds: [embedLog] });
-          }
-        }
-
-        return interaction.editReply({ content: `🎉 **Registro concluído com sucesso, ${member}!**` });
+        return interaction.reply({
+          content: '📸 **Quase lá!** Envie a **foto do seu personagem/RG** diretamente como uma mensagem de imagem neste chat para finalizar:',
+          ephemeral: true
+        });
       }
     }
   } catch (err) {
@@ -1397,12 +1327,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ==========================================
-// MENSAGENS (RECRUTAMENTO INTACTO)
+// PROCESSAMENTO DE MENSAGENS (CHAT)
 // ==========================================
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
+  // RECRUTAMENTO (INTACTO)
   const sessaoCandidato = sessoesCandidatos.get(message.channel.id);
   if (sessaoCandidato && message.author.id === sessaoCandidato.userId) {
     if (sessaoCandidato.timer) clearTimeout(sessaoCandidato.timer);
@@ -1428,7 +1359,56 @@ client.on(Events.MessageCreate, async (message) => {
       });
 
       await avancarPergunta(message.channel.id, message.channel, message.author);
+      return;
     }
+  }
+
+  // PROCESSAMENTO DA FOTO DE REGISTRO
+  const sessaoRegistro = sessoesRegistro.get(message.author.id);
+  if (sessaoRegistro && sessaoRegistro.aguardandoFoto) {
+    const anexo = message.attachments.first();
+    if (!anexo || !anexo.contentType?.startsWith('image/')) {
+      await message.reply('❌ Por favor, envie uma **imagem válida** (PNG, JPG, WEBP).');
+      return;
+    }
+
+    const member = message.member;
+    const nomeFormatado = `${sessaoRegistro.nome} \vert{} ID:${sessaoRegistro.id}`;
+    let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
+
+    let nickSucesso = true;
+    if (novoNick.length <= 32) {
+      await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
+    }
+
+    if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
+    if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
+
+    if (configRegistro.logChannelId) {
+      const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
+      if (canalLog) {
+        const embedLog = new EmbedBuilder()
+          .setTitle('📝 Novo Registro Efetuado')
+          .setColor(0x2ecc71)
+          .addFields(
+            { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
+            { name: '🆔 Personagem / ID', value: `\`${sessaoRegistro.nome}\` | \`${sessaoRegistro.id}\``, inline: true },
+            { name: '⏱️ Turno', value: `\`${sessaoRegistro.turno}\``, inline: true },
+            { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
+          )
+          .setImage(anexo.url)
+          .setTimestamp();
+
+        await canalLog.send({ embeds: [embedLog] });
+      }
+    }
+
+    sessoesRegistro.delete(message.author.id);
+    await message.delete().catch(() => null);
+
+    await message.channel.send({
+      content: `🎉 **Registro concluído com sucesso, ${member}!**`
+    }).then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
   }
 });
 
