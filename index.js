@@ -1,7 +1,6 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -21,6 +20,9 @@ const {
   MessageFlags
 } = require('discord.js');
 require('dotenv').config();
+
+// Flag explícita do Discord para Components V2
+const FLAG_V2 = MessageFlags.IsComponentsV2;
 
 // ==========================================
 // TRATAMENTO GLOBAL DE ERROS (ANTI-CRASH)
@@ -76,6 +78,12 @@ const configRegistro = {
   cargosAtribuir: [],
   cargosRemover: [],
   cargoResponsavel: null,
+  cargosTurnos: {
+    manha: null,
+    tarde: null,
+    noite: null,
+    madrugada: null
+  },
   tagNome: '',
   painelTitulo: '👤 │ Central de Registro',
   painelDescricao: 'Utilize este painel para realizar seu **registro oficial** na organização.\n\nClique no botão abaixo para abrir seu ticket privado de registro.',
@@ -96,64 +104,109 @@ function isDonoOuAdmin(interaction) {
 }
 
 // ==========================================
-// MÓDULO 1: RECRUTAMENTO
+// MÓDULO 1: RECRUTAMENTO (CONTAINERS V2)
 // ==========================================
 
-function gerarPayloadPainelRecrutamento(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle(configRecrutamento.painelTitulo)
-    .setDescription(
-      `${configRecrutamento.painelDescricao}\n\n` +
-      `### 🛡️ Etapas do Processo\n` +
-      `• 📝 Preenchimento do formulário\n` +
-      `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** para responder cada pergunta\n` +
-      `• 🔍 Análise da candidatura\n` +
-      `• 🎶🎤 Entrevista com a equipe\n` +
-      `• ✅ Resultado final`
-    )
-    .setColor(configRecrutamento.painelCorHex)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+function gerarPayloadPainelRecrutamentoV2(guild) {
+  const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
+
+  const textoConteudo = 
+    `# ${configRecrutamento.painelTitulo}\n\n` +
+    `${configRecrutamento.painelDescricao}\n\n` +
+    `### 🛡️ Etapas do Processo\n` +
+    `• 📝 Preenchimento do formulário\n` +
+    `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** para responder cada pergunta\n` +
+    `• 🔍 Análise da candidatura\n` +
+    `• 🎶🎤 Entrevista com a equipe\n` +
+    `• ✅ Resultado final`;
+
+  const containerComponents = [];
 
   if (configRecrutamento.painelBannerUrl) {
-    embed.setImage(configRecrutamento.painelBannerUrl);
+    containerComponents.push({
+      type: 12,
+      items: [{ media: { url: configRecrutamento.painelBannerUrl } }]
+    });
   }
 
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
+  if (logoUrl) {
+    containerComponents.push({
+      type: 9,
+      components: [{ type: 10, content: textoConteudo }],
+      accessory: { type: 11, media: { url: logoUrl } }
+    });
+  } else {
+    containerComponents.push({ type: 10, content: textoConteudo });
   }
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
+  containerComponents.push(
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 2, custom_id: 'iniciar_formulario', label: 'Formulário', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_config_painel', emoji: { name: '⚙️' } }
+      ]
+    },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
   );
 
-  return { embeds: [embed], components: [row] };
+  return {
+    components: [{ type: 17, accent_color: configRecrutamento.painelCorHex, components: containerComponents }],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadMenuConfigRecrutamento(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('⚙️ Configuração do Recrutamento')
-    .setDescription(
-      `Gerencie o sistema de recrutamento através das opções abaixo.\n\n` +
-      `⚙️ **Configuração** — visualize o status atual.\n` +
-      `🎨 **Visual & Textos** — altere títulos, descrição e banners.\n` +
-      `🛠️ **Definir configurações** — altere os canais e cargos do sistema.\n` +
-      `❓ **Perguntas** — gerencie as perguntas e tempo limite.`
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+function gerarPayloadMenuConfigRecrutamentoV2(guild) {
+  const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Configuração').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('menu_visual_textos').setLabel('Visual & Textos').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
+  const textoConteudo = 
+    `# ⚙️ Configuração do Recrutamento\n\n` +
+    `Gerencie o sistema de recrutamento através das opções abaixo.`;
+
+  const textoExplicativo = 
+    `⚙️ **Configuração** — visualize o status atual.\n` +
+    `🎨 **Visual & Textos** — altere títulos, descrição e banners.\n` +
+    `🛠️ **Definir configurações** — altere os canais e cargos do sistema.\n` +
+    `❓ **Perguntas** — gerencie as perguntas e tempo limite.`;
+
+  const containerComponents = [];
+
+  if (logoUrl) {
+    containerComponents.push({
+      type: 9,
+      components: [{ type: 10, content: textoConteudo }],
+      accessory: { type: 11, media: { url: logoUrl } }
+    });
+  } else {
+    containerComponents.push({ type: 10, content: textoConteudo });
+  }
+
+  containerComponents.push(
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 2, custom_id: 'menu_config_geral', label: 'Configuração', emoji: { name: '⚙️' } },
+        { type: 2, style: 2, custom_id: 'menu_visual_textos', label: 'Visual & Textos', emoji: { name: '🎨' } },
+        { type: 2, style: 2, custom_id: 'menu_definir_config', label: 'Definir configurações', emoji: { name: '🛠️' } },
+        { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Perguntas', emoji: { name: '❓' } }
+      ]
+    },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: textoExplicativo },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
   );
 
-  return { embeds: [embed], components: [row] };
+  return {
+    components: [{ type: 17, accent_color: 0x3498db, components: containerComponents }],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadStatusConfigRecrutamento() {
+function gerarPayloadStatusConfigRecrutamentoV2() {
   const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida';
   const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
   const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
@@ -161,95 +214,140 @@ function gerarPayloadStatusConfigRecrutamento() {
   const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
   const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
-  const embed = new EmbedBuilder()
-    .setTitle('⚙️ Status Atual das Configurações')
-    .setDescription(
-      `📁 **Categoria:** ${catTexto}\n` +
-      `📡 **Canal de relatórios:** ${relTexto}\n` +
-      `📢 **Canal de anúncios:** ${anuTexto}\n` +
-      `👮 **Cargo recrutador:** ${recTexto}\n` +
-      `✅ **Cargos ao aprovar:** ${aprTexto}\n` +
-      `🗑️ **Cargos a remover:** ${remTexto}\n` +
-      `❓ **Perguntas cadastradas:** \`${configRecrutamento.perguntas.length}/20\`\n` +
-      `⏱️ **Tempo por pergunta:** \`${configRecrutamento.tempoPerguntaTexto}\``
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+  const textoConteudo = 
+    `# ⚙️ Status Atual das Configurações\n\n` +
+    `📁 **Categoria:** ${catTexto}\n` +
+    `📡 **Canal de relatórios:** ${relTexto}\n` +
+    `📢 **Canal de anúncios:** ${anuTexto}\n` +
+    `👮 **Cargo recrutador:** ${recTexto}\n` +
+    `✅ **Cargos ao aprovar:** ${aprTexto}\n` +
+    `🗑️ **Cargos a remover:** ${remTexto}\n` +
+    `❓ **Perguntas cadastradas:** \`${configRecrutamento.perguntas.length}/20\`\n` +
+    `⏱️ **Tempo por pergunta:** \`${configRecrutamento.tempoPerguntaTexto}\``;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-  );
-
-  return { embeds: [embed], components: [row] };
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadVisualTextosRecrutamento() {
+function gerarPayloadVisualTextosRecrutamentoV2() {
   const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado';
   const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
 
-  const embed = new EmbedBuilder()
-    .setTitle('🎨 Configurações de Visual & Textos')
-    .setDescription(
-      `📌 **Título Atual:** \`${configRecrutamento.painelTitulo}\`\n` +
-      `🖼️ **Banner do Painel:** ${bannerInfo}\n` +
-      `🖼️ **Banner de Aprovação:** ${bannerAprovInfo}`
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+  const textoConteudo = 
+    `# 🎨 Configurações de Visual & Textos\n\n` +
+    `📌 **Título Atual:** \`${configRecrutamento.painelTitulo}\`\n` +
+    `🖼️ **Banner do Painel:** ${bannerInfo}\n` +
+    `🖼️ **Banner de Aprovação:** ${bannerAprovInfo}`;
 
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('Editar Título & Descrição').setEmoji('✏️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('btn_editar_banner_aprovacao').setLabel('Banner de Aprovação').setEmoji('🖼️').setStyle(ButtonStyle.Success)
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-  );
-
-  return { embeds: [embed], components: [row1, row2] };
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 1, custom_id: 'btn_editar_painel', label: 'Editar Título & Descrição', emoji: { name: '✏️' } },
+              { type: 2, style: 3, custom_id: 'btn_editar_banner_aprovacao', label: 'Banner de Aprovação', emoji: { name: '🖼️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadGerenciarPerguntasRecrutamento() {
+function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
   const listaPerguntas = configRecrutamento.perguntas.length > 0 
     ? configRecrutamento.perguntas.map((p, i) => `**${i + 1}.**${p}`).join('\n') 
     : '*Nenhuma pergunta cadastrada.*';
 
-  const embed = new EmbedBuilder()
-    .setTitle('❓ Gerenciar Perguntas & Tempo')
-    .setDescription(
-      `⏱️ **Tempo Atual por Pergunta:** \`${configRecrutamento.tempoPerguntaTexto}\`\n\n` +
-      `📋 **Perguntas Cadastradas (${configRecrutamento.perguntas.length}/20):**\n${listaPerguntas}`
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+  const textoConteudo = 
+    `# ❓ Gerenciar Perguntas & Tempo\n\n` +
+    `⏱️ **Tempo Atual por Pergunta:** \`${configRecrutamento.tempoPerguntaTexto}\`\n\n` +
+    `📋 **Perguntas Cadastradas (${configRecrutamento.perguntas.length}/20):**\n${listaPerguntas}`;
 
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('Adicionar').setEmoji('➕').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('Remover Última').setEmoji('➖').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('btn_rem_pergunta_especifica').setLabel('Remover Específica').setEmoji('🗑️').setStyle(ButtonStyle.Danger)
-  );
-
-  const rowTempo = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('select_tempo_pergunta')
-      .setPlaceholder('⏱️ Selecione o tempo por pergunta')
-      .addOptions([
-        { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
-        { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
-        { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
-        { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
-        { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
-      ])
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-  );
-
-  return { embeds: [embed], components: [row1, rowTempo, row2] };
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 3, custom_id: 'btn_add_pergunta', label: 'Adicionar', emoji: { name: '➕' } },
+              { type: 2, style: 4, custom_id: 'btn_rem_pergunta', label: 'Remover Última', emoji: { name: '➖' } },
+              { type: 2, style: 4, custom_id: 'btn_rem_pergunta_especifica', label: 'Remover Específica', emoji: { name: '🗑️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 3,
+              custom_id: 'select_tempo_pergunta',
+              placeholder: '⏱️ Selecione o tempo por pergunta',
+              options: [
+                { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
+                { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
+                { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
+                { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
+                { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
+              ]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadDefinirConfigRecrutamento() {
+function gerarPayloadDefinirConfigRecrutamentoV2() {
   const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido';
   const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
   const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
@@ -257,40 +355,98 @@ function gerarPayloadDefinirConfigRecrutamento() {
   const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
   const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
-  const embed = new EmbedBuilder()
-    .setTitle('🛠️ Configurações de Canais e Cargos')
-    .setDescription(
-      `📁 **Categoria:** ${catTexto}\n` +
-      `📄 **Canal de Relatórios:** ${relTexto}\n` +
-      `📢 **Canal de Anúncios:** ${anuTexto}\n` +
-      `🎖️ **Cargos de Aprovado:** ${aprTexto}\n` +
-      `🗑️ **Cargos a Remover:** ${remTexto}\n` +
-      `🛡️ **Cargo Recrutador:** ${recTexto}`
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: `📁 **Categoria dos recrutamentos**\n${catTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_categoria',
+              placeholder: '📁 Selecione a categoria',
+              channel_types: [ChannelType.GuildCategory]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  const rowCategoria = new ActionRowBuilder().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a categoria').setChannelTypes(ChannelType.GuildCategory)
-  );
+          { type: 10, content: `📄 **Canal de relatórios**\n${relTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_canal_relatorios',
+              placeholder: '📄 Selecione o canal de relatórios',
+              channel_types: [ChannelType.GuildText]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  const rowRelatorio = new ActionRowBuilder().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📄 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
-  );
+          { type: 10, content: `📢 **Canal de anúncios**\n${anuTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_canal_anuncios',
+              placeholder: '📢 Selecione o canal de anúncios',
+              channel_types: [ChannelType.GuildText]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  const rowAnuncios = new ActionRowBuilder().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📢 Selecione o canal de anúncios').setChannelTypes(ChannelType.GuildText)
-  );
+          { type: 10, content: `🎖️ **Cargo de aprovado**\n${aprTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargos_aprovar',
+              placeholder: '🎖️ Selecione os cargos de aprovado',
+              min_values: 0,
+              max_values: 5
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  const rowAprovar = new ActionRowBuilder().addComponents(
-    new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('🎖️ Selecione os cargos de aprovado').setMinValues(0).setMaxValues(5)
-  );
+          { type: 10, content: `🗑️ **Cargos removidos ao aprovar**\n${remTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargos_remover',
+              placeholder: '🗑️ Selecione os cargos a remover',
+              min_values: 0,
+              max_values: 5
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  const rowVoltar = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-  );
+          { type: 10, content: `🛡️ **Cargo de recrutador**\n${recTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargo_recrutador',
+              placeholder: '🛡️ Selecione o cargo de recrutador'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
 
-  return { embeds: [embed], components: [rowCategoria, rowRelatorio, rowAnuncios, rowAprovar, rowVoltar] };
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
 }
 
 async function sincronizarPainelRecrutamento(guild) {
@@ -303,7 +459,7 @@ async function sincronizarPainelRecrutamento(guild) {
     const mensagem = await canal.messages.fetch(configRecrutamento.painelMessageId).catch(() => null);
     if (!mensagem) return;
 
-    const payload = gerarPayloadPainelRecrutamento(guild || canal.guild);
+    const payload = gerarPayloadPainelRecrutamentoV2(guild || canal.guild);
     await mensagem.edit(payload);
   } catch (err) {
     console.error('Erro ao sincronizar painel público de recrutamento:', err);
@@ -344,15 +500,18 @@ async function avancarPergunta(channelId, channel, user) {
     }
     sessao.step = 1;
 
-    const embedPergunta1 = new EmbedBuilder()
-      .setTitle(`📋 │ PERGUNTA 1/${configRecrutamento.perguntas.length}`)
-      .setDescription(
-        `> ${configRecrutamento.perguntas[0]}\n\n` +
-        `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*`
-      )
-      .setColor(0x3498db);
+    const payloadP1 = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: `# 📋 │ PERGUNTA 1/${configRecrutamento.perguntas.length}\n\n>${configRecrutamento.perguntas[0]}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*` }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedPergunta1] });
+    await channel.send(payloadP1);
     iniciarTimerPergunta(channelId, channel, user);
     return;
   }
@@ -361,15 +520,18 @@ async function avancarPergunta(channelId, channel, user) {
     const proximaPergunta = configRecrutamento.perguntas[sessao.step];
     sessao.step += 1;
 
-    const embedProxima = new EmbedBuilder()
-      .setTitle(`📋 │ PERGUNTA ${sessao.step}/${configRecrutamento.perguntas.length}`)
-      .setDescription(
-        `> ${proximaPergunta}\n\n` +
-        `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*`
-      )
-      .setColor(0x3498db);
+    const payloadProx = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: `# 📋 │ PERGUNTA ${sessao.step}/${configRecrutamento.perguntas.length}\n\n>${proximaPergunta}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*` }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedProxima] });
+    await channel.send(payloadProx);
     iniciarTimerPergunta(channelId, channel, user);
   } else {
     await finalizarRecrutamento(channel, user, sessao);
@@ -385,26 +547,34 @@ function iniciarTimerPergunta(channelId, channel, user) {
 
     sessoesCandidatos.delete(channelId);
 
-    const embedExpirado = new EmbedBuilder()
-      .setTitle('⏰ Recrutamento expirado')
-      .setDescription(
-        'Olá! Seu recrutamento foi **encerrado por inatividade**.\n\n' +
-        `⏰ Você não respondeu a pergunta em até **${configRecrutamento.tempoPerguntaTexto}**.\n` +
-        '🗑️ O canal do recrutamento foi fechado.\n\n' +
-        'Se ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀\n\n' +
-        '───────────────────────\n' +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0xe74c3c);
+    const payloadExpirado = {
+      components: [{
+        type: 17,
+        accent_color: 0xe74c3c,
+        components: [
+          {
+            type: 10,
+            content: `# ⏰ Recrutamento expirado\n\nOlá! Seu recrutamento foi **encerrado por inatividade**.\n\n⏰ Você não respondeu a pergunta em até **${configRecrutamento.tempoPerguntaTexto}**.\n🗑️ O canal do recrutamento foi fechado.\n\nSe ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await user.send({ embeds: [embedExpirado] }).catch(() => null);
+    await user.send(payloadExpirado).catch(() => null);
 
-    const embedAvisoExpirado = new EmbedBuilder()
-      .setTitle('⏰ │ RECRUTAMENTO EXPIRADO')
-      .setDescription('⚠️ **Sessão expirada por inatividade!** O canal será finalizado e apagado em 5 segundos...')
-      .setColor(0xe74c3c);
+    const payloadAviso = {
+      components: [{
+        type: 17,
+        accent_color: 0xe74c3c,
+        components: [
+          { type: 10, content: `# ⏰ │ RECRUTAMENTO EXPIRADO\n\n⚠️ **Sessão expirada por inatividade!** O canal será finalizado e apagado em 5 segundos...` }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedAvisoExpirado] });
+    await channel.send(payloadAviso);
 
     setTimeout(() => {
       channel.delete().catch(() => null);
@@ -419,17 +589,21 @@ async function finalizarRecrutamento(channel, user, sessao) {
   await enviarRelatorioRecrutamento(user, sessao);
   sessoesCandidatos.delete(channel.id);
 
-  const embedFinal = new EmbedBuilder()
-    .setTitle('🎉 │ RECRUTAMENTO CONCLUÍDO')
-    .setDescription(
-      `Parabéns ${user}, formulário enviado para a gerência!\n\n` +
-      '───────────────────────\n' +
-      '🔒 *Este canal será finalizado e apagado em 5 segundos...*\n\n' +
-      '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-    )
-    .setColor(0x2ecc71);
+  const payloadFinal = {
+    components: [{
+      type: 17,
+      accent_color: 0x2ecc71,
+      components: [
+        {
+          type: 10,
+          content: `# 🎉 │ RECRUTAMENTO CONCLUÍDO\n\nParabéns ${user}, formulário enviado para a gerência!\n\n───────────────────────\n🔒 *Este canal será finalizado e apagado em 5 segundos...*\n\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+        }
+      ]
+    }],
+    flags: FLAG_V2
+  };
 
-  await channel.send({ embeds: [embedFinal] });
+  await channel.send(payloadFinal);
 
   setTimeout(() => {
     channel.delete().catch(() => null);
@@ -442,115 +616,265 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   const canal = await client.channels.fetch(configRecrutamento.relatorioChannelId).catch(() => null);
   if (!canal) return;
 
-  const embed = new EmbedBuilder()
-    .setTitle(`📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}`)
-    .setColor(configRecrutamento.painelCorHex)
-    .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-    .addFields(
-      { name: '👤 Candidato', value: `${user} (\`${user.id}\`)`, inline: true },
-      { name: '🆔 Personagem / ID', value: `\`${sessao.nomeIdPersonagem}\``, inline: true },
-      { name: '‎', value: '─── **Perguntas & Respostas** ───' }
-    )
-    .setTimestamp();
-
-  if (sessao.rgImageUrl) {
-    embed.setImage(sessao.rgImageUrl);
-  }
-
+  let textoRespostas = '';
   sessao.respostas.forEach((r, idx) => {
-    embed.addFields({
-      name: `❓ P${idx + 1}:${r.pergunta}`,
-      value: `> ${r.resposta || '*Sem resposta*'}`
-    });
+    textoRespostas += `**❓ P${idx + 1}: ${r.pergunta}**\n>${r.resposta || '*Sem resposta*'}\n\n`;
   });
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`aprovar_${user.id}`).setLabel('Aprovar').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`reprovar_${user.id}`).setLabel('Reprovar').setStyle(ButtonStyle.Danger)
+  const containerComponents = [
+    { type: 10, content: `# 📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}\n\n👤 **Candidato:** ${user} (\`${user.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nomeIdPersonagem}\`` },
+    { type: 14, divider: true, spacing: 1 }
+  ];
+
+  if (sessao.rgImageUrl) {
+    containerComponents.push({
+      type: 12,
+      items: [{ media: { url: sessao.rgImageUrl } }]
+    });
+    containerComponents.push({ type: 14, divider: true, spacing: 1 });
+  }
+
+  containerComponents.push(
+    { type: 10, content: textoRespostas },
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
+        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' }
+      ]
+    }
   );
 
   const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
-  await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
+  await canal.send({
+    content: textoMencao,
+    components: [{ type: 17, accent_color: configRecrutamento.painelCorHex, components: containerComponents }],
+    flags: FLAG_V2
+  });
 }
 
 // ==========================================
-// MÓDULO 2: REGISTRO
+// MÓDULO 2: REGISTRO (CONTAINERS V2)
 // ==========================================
 
-function gerarPayloadRegistro(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle(configRegistro.painelTitulo)
-    .setDescription(
-      `${configRegistro.painelDescricao}\n\n` +
-      `### ❓ Como funciona?\n` +
-      `• 📝 Clique em **Registre-se** abaixo.\n` +
-      `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
-      `• 👤 Responda às perguntas e envie a foto do seu RG no chat.\n` +
-      `• 🔒 Após a conclusão, seu nome e cargos serão definidos e o **ticket será fechado automaticamente**.`
-    )
-    .setColor(configRegistro.painelCorHex)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+function gerarPayloadRegistroV2(guild) {
+  const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
+
+  const textoConteudo = 
+    `# ${configRegistro.painelTitulo}\n\n` +
+    `${configRegistro.painelDescricao}\n\n` +
+    `### ❓ Como funciona?\n` +
+    `• 📝 Clique em **Registre-se** abaixo.\n` +
+    `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
+    `• 👤 Responda às perguntas e envie a foto do seu RG no chat.\n` +
+    `• 🔒 Após a conclusão, seu nome e cargos serão definidos e o **ticket será fechado automaticamente**.`;
+
+  const containerComponents = [];
 
   if (configRegistro.painelBannerUrl) {
-    embed.setImage(configRegistro.painelBannerUrl);
+    containerComponents.push({
+      type: 12,
+      items: [{ media: { url: configRegistro.painelBannerUrl } }]
+    });
   }
 
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
+  if (logoUrl) {
+    containerComponents.push({
+      type: 9,
+      components: [{ type: 10, content: textoConteudo }],
+      accessory: { type: 11, media: { url: logoUrl } }
+    });
+  } else {
+    containerComponents.push({ type: 10, content: textoConteudo });
   }
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_ticket_registro').setLabel('Registre-se').setEmoji('📝').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_registro').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
+  containerComponents.push(
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 2, custom_id: 'iniciar_ticket_registro', label: 'Registre-se', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_config_registro', emoji: { name: '⚙️' } }
+      ]
+    },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
   );
 
-  return { embeds: [embed], components: [row] };
+  return {
+    components: [{ type: 17, accent_color: configRegistro.painelCorHex, components: containerComponents }],
+    flags: FLAG_V2
+  };
 }
 
-function gerarPayloadConfigRegistro() {
+function gerarPayloadConfigRegistroV2() {
   const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
   const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
   const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRegistro.cargosRemover.length ? configRegistro.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
   const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
-  const embed = new EmbedBuilder()
-    .setTitle('⚙️ Configurações da Central de Registro')
-    .setDescription(
-      `Configure abaixo a categoria, canais, cargo responsável e cargos do registro.\n\n` +
-      `📁 **Categoria dos Tickets:** ${catTexto}\n` +
-      `📌 **Canal de LOG:** ${logTexto}\n` +
-      `🛡️ **Cargo Responsável:** ${resTexto}\n` +
-      `🎖️ **Cargos a Atribuir:** ${atrTexto}\n` +
-      `🗑️ **Cargos a Remover:** ${remTexto}\n` +
-      `🏷️ **TAG do Nome:** ${tagTexto}`
-    )
-    .setColor(0x3498db)
-    .setFooter({ text: '🤖 Organizações • Roleplay | Desenvolvido por Cetus' });
+  const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não configurado';
+  const tTarde = configRegistro.cargosTurnos.tarde ? `<@&${configRegistro.cargosTurnos.tarde}>` : '❌ Não configurado';
+  const tNoite = configRegistro.cargosTurnos.noite ? `<@&${configRegistro.cargosTurnos.noite}>` : '❌ Não configurado';
+  const tMadrugada = configRegistro.cargosTurnos.madrugada ? `<@&${configRegistro.cargosTurnos.madrugada}>` : '❌ Não configurado';
 
-  const rowCategoria = new ActionRowBuilder().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId('select_categoria_registro').setPlaceholder('📁 Selecione a categoria dos tickets').setChannelTypes(ChannelType.GuildCategory)
-  );
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: 
+              `# ⚙️ Configurações da Central de Registro\n\n` +
+              `📁 **Categoria dos Tickets:** ${catTexto}\n` +
+              `📌 **Canal de LOG:** ${logTexto}\n` +
+              `🛡️ **Cargo Responsável:** ${resTexto}\n` +
+              `🎖️ **Cargos a Atribuir:** ${atrTexto}\n` +
+              `🏷️ **TAG do Nome:** ${tagTexto}\n\n` +
+              `### ⏱️ Cargos por Turno\n` +
+              `🌅 **Manhã:** ${tManha}\n` +
+              `☀️ **Tarde:** ${tTarde}\n` +
+              `🌙 **Noite:** ${tNoite}\n` +
+              `🌌 **Madrugada:** ${tMadrugada}`
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_categoria_registro',
+              placeholder: '📁 Selecione a categoria dos tickets',
+              channel_types: [ChannelType.GuildCategory]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_log_registro',
+              placeholder: '📌 Selecione canal de LOG',
+              channel_types: [ChannelType.GuildText]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_responsavel_reg',
+              placeholder: '🛡️ Selecione o Cargo Responsável'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargos_atribuir',
+              placeholder: '🎖️ Selecione cargo(s) a atribuir',
+              min_values: 0,
+              max_values: 5
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 1, custom_id: 'btn_menu_cargos_turnos', label: 'Configurar Cargos por Turno', emoji: { name: '⏱️' } },
+              { type: 2, style: 2, custom_id: 'btn_configurar_tag_nome', label: 'TAG do Nome', emoji: { name: '🏷️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
+}
 
-  const rowLog = new ActionRowBuilder().addComponents(
-    new ChannelSelectMenuBuilder().setCustomId('select_log_registro').setPlaceholder('📌 Selecione canal de LOG').setChannelTypes(ChannelType.GuildText)
-  );
+function gerarPayloadConfigCargosTurnosV2() {
+  const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não definido';
+  const tTarde = configRegistro.cargosTurnos.tarde ? `<@&${configRegistro.cargosTurnos.tarde}>` : '❌ Não definido';
+  const tNoite = configRegistro.cargosTurnos.noite ? `<@&${configRegistro.cargosTurnos.noite}>` : '❌ Não definido';
+  const tMadrugada = configRegistro.cargosTurnos.madrugada ? `<@&${configRegistro.cargosTurnos.madrugada}>` : '❌ Não definido';
 
-  const rowResponsavel = new ActionRowBuilder().addComponents(
-    new RoleSelectMenuBuilder().setCustomId('select_responsavel_reg').setPlaceholder('🛡️ Selecione o Cargo Responsável')
-  );
-
-  const rowAtribuir = new ActionRowBuilder().addComponents(
-    new RoleSelectMenuBuilder().setCustomId('select_cargos_atribuir').setPlaceholder('🎖️ Selecione cargo(s) a atribuir').setMinValues(0).setMaxValues(5)
-  );
-
-  const rowBotoes = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('btn_configurar_tag_nome').setLabel('Configurar TAG do Nome').setEmoji('🏷️').setStyle(ButtonStyle.Secondary)
-  );
-
-  return { embeds: [embed], components: [rowCategoria, rowLog, rowResponsavel, rowAtribuir, rowBotoes] };
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: 
+              `# ⏱️ Configuração de Cargos por Turno\n\n` +
+              `Selecione os cargos para cada turno. O bot entregará automaticamente o cargo correspondente ao membro quando ele preencher o registro.\n\n` +
+              `🌅 **Manhã:** ${tManha}\n` +
+              `☀️ **Tarde:** ${tTarde}\n` +
+              `🌙 **Noite:** ${tNoite}\n` +
+              `🌌 **Madrugada:** ${tMadrugada}`
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🌅 **Cargo do Turno Manhã**` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_turno_manha',
+              placeholder: '🌅 Selecione o cargo para o turno MANHÃ'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `☀️ **Cargo do Turno Tarde**` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_turno_tarde',
+              placeholder: '☀️ Selecione o cargo para o turno TARDE'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🌙 **Cargo do Turno Noite**` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_turno_noite',
+              placeholder: '🌙 Selecione o cargo para o turno NOITE'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🌌 **Cargo do Turno Madrugada**` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_turno_madrugada',
+              placeholder: '🌌 Selecione o cargo para o turno MADRUGADA'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'abrir_config_registro', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: FLAG_V2
+  };
 }
 
 async function sincronizarPainelRegistro(guild) {
@@ -563,7 +887,7 @@ async function sincronizarPainelRegistro(guild) {
     const mensagem = await canal.messages.fetch(configRegistro.painelMessageId).catch(() => null);
     if (!mensagem) return;
 
-    const payload = gerarPayloadRegistro(guild || canal.guild);
+    const payload = gerarPayloadRegistroV2(guild || canal.guild);
     await mensagem.edit(payload);
   } catch (err) {
     console.error('Erro ao sincronizar painel público de registro:', err);
@@ -575,59 +899,75 @@ async function processarPassoRegistroTicket(channel, member) {
   if (!sessao) return;
 
   if (sessao.step === 1) {
-    const embedPasso1 = new EmbedBuilder()
-      .setTitle('👤 │ NOME DO PERSONAGEM')
-      .setDescription(
-        `Olá ${member}, responda com o **NOME** do seu personagem no chat.\n\n` +
-        `📌 **Exemplo:** \`João\`\n\n` +
-        '───────────────────────\n' +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0x3498db);
+    const payloadP1 = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: `# 👤 │ NOME DO PERSONAGEM\n\nOlá ${member}, responda com o **NOME** do seu personagem no chat.\n\n📌 **Exemplo:** \`João\`\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedPasso1] });
+    await channel.send(payloadP1);
 
   } else if (sessao.step === 2) {
-    const embedPasso2 = new EmbedBuilder()
-      .setTitle('🆔 │ PASSAPORTE / ID')
-      .setDescription(
-        `Perfeito! Agora digite o seu **ID / Passaporte** no chat.\n\n` +
-        `📌 **Exemplo:** \`1234\`\n\n` +
-        '───────────────────────\n' +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0x3498db);
+    const payloadP2 = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: `# 🆔 │ PASSAPORTE / ID\n\nPerfeito! Agora digite o seu **ID / Passaporte** no chat.\n\n📌 **Exemplo:** \`1234\`\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedPasso2] });
+    await channel.send(payloadP2);
 
   } else if (sessao.step === 3) {
-    const embedPasso3 = new EmbedBuilder()
-      .setTitle('⏱️ │ TURNO DE ATUAÇÃO')
-      .setDescription(
-        `Informe qual o seu **Turno de Atuação** na cidade.\n\n` +
-        `📌 **Exemplo:** \`Manhã\`, \`Tarde\`, \`Noite\` ou \`Madrugada\`\n\n` +
-        '───────────────────────\n' +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0x3498db);
+    const payloadP3 = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: `# ⏱️ │ TURNO DE ATUAÇÃO\n\nInforme qual o seu **Turno de Atuação** na cidade.\n\n📌 **Opções:** \`Manhã\`, \`Tarde\`, \`Noite\` ou \`Madrugada\`\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedPasso3] });
+    await channel.send(payloadP3);
 
   } else if (sessao.step === 4) {
-    const embedPasso4 = new EmbedBuilder()
-      .setTitle('📸 │ FOTO DO RG')
-      .setDescription(
-        `Por fim, envie em anexo no chat a **FOTO do seu RG / Personagem**.\n\n` +
-        `📌 **Formatos aceitos:** PNG, JPG ou WEBP.\n\n` +
-        '───────────────────────\n' +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0x3498db);
+    const payloadP4 = {
+      components: [{
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          {
+            type: 10,
+            content: `# 📸 │ FOTO DO RG\n\nPor fim, envie em anexo no chat a **FOTO do seu RG / Personagem**.\n\n📌 **Formatos aceitos:** PNG, JPG ou WEBP.\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    await channel.send({ embeds: [embedPasso4] });
+    await channel.send(payloadP4);
 
   } else if (sessao.step === 5) {
-    const nomeComId = `${sessao.nome} \vert{}${sessao.id}`;
+    const nomeComId = `${sessao.nome} | ${sessao.id}`;
     let novoNick = configRegistro.tagNome 
       ? `『 ${configRegistro.tagNome} 』 ${nomeComId}` 
       : nomeComId;
@@ -639,25 +979,52 @@ async function processarPassoRegistroTicket(channel, member) {
       await member.setNickname(nomeComId).catch(() => { nickSucesso = false; });
     }
 
-    if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
-    if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
+    // Atribuição dos cargos padrões do registro
+    if (configRegistro.cargosAtribuir.length > 0) {
+      await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
+    }
+
+    // Atribuição do cargo de turno correspondente
+    const turnoLower = sessao.turno.toLowerCase();
+    let cargoTurnoId = null;
+
+    if (turnoLower.includes('manh') || turnoLower.includes('manha')) {
+      cargoTurnoId = configRegistro.cargosTurnos.manha;
+    } else if (turnoLower.includes('tard')) {
+      cargoTurnoId = configRegistro.cargosTurnos.tarde;
+    } else if (turnoLower.includes('noit')) {
+      cargoTurnoId = configRegistro.cargosTurnos.noite;
+    } else if (turnoLower.includes('madrug')) {
+      cargoTurnoId = configRegistro.cargosTurnos.madrugada;
+    }
+
+    if (cargoTurnoId) {
+      await member.roles.add(cargoTurnoId).catch(() => null);
+    }
 
     if (configRegistro.logChannelId) {
       const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
       if (canalLog) {
-        const embedLog = new EmbedBuilder()
-          .setTitle('📝 Novo Registro Efetuado')
-          .setColor(0x2ecc71)
-          .addFields(
-            { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
-            { name: '🆔 Personagem / ID', value: `\`${sessao.nome}\` | \`${sessao.id}\``, inline: true },
-            { name: '⏱️ Turno', value: `\`${sessao.turno}\``, inline: true },
-            { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
-          )
-          .setImage(sessao.fotoUrl)
-          .setTimestamp();
+        const payloadLog = {
+          components: [{
+            type: 17,
+            accent_color: 0x2ecc71,
+            components: [
+              {
+                type: 10,
+                content: `# 📝 Novo Registro Efetuado\n\n👤 **Membro:** ${member} (\`${member.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n⏱️ **Turno:** \`${sessao.turno}\`\n🏷️ **Apelido Aplicado:** ${nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido'}`
+              },
+              { type: 14, divider: true, spacing: 1 },
+              {
+                type: 12,
+                items: [{ media: { url: sessao.fotoUrl } }]
+              }
+            ]
+          }],
+          flags: FLAG_V2
+        };
 
-        await canalLog.send({ embeds: [embedLog] });
+        await canalLog.send(payloadLog);
       }
     }
 
@@ -665,25 +1032,21 @@ async function processarPassoRegistroTicket(channel, member) {
 
     const dataAtual = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-    const embedConcluido = new EmbedBuilder()
-      .setTitle('✅ │ REGISTRO CONCLUÍDO')
-      .setDescription(
-        `Parabéns ${member}, seu registro foi **realizado com sucesso**!\n\n` +
-        `🏢 **Servidor:** ${channel.guild.name}\n` +
-        `🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n` +
-        `🏷️ **Apelido:** \`${novoNick}\`\n\n` +
-        '───────────────────────\n' +
-        '🔒 *Este canal privado será encerrado e apagado em 5 segundos...*\n\n' +
-        `📅 **Data:** ${dataAtual}\n\n` +
-        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-      )
-      .setColor(0x2ecc71);
+    const payloadConcluido = {
+      components: [{
+        type: 17,
+        accent_color: 0x2ecc71,
+        components: [
+          {
+            type: 10,
+            content: `# ✅ │ REGISTRO CONCLUÍDO\n\nParabéns ${member}, seu registro foi **realizado com sucesso**!\n\n🏢 **Servidor:** ${channel.guild.name}\n🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n🏷️ **Apelido:** \`${novoNick}\`\n⏱️ **Turno:** \`${sessao.turno}\`\n\n───────────────────────\n🔒 *Este canal privado será encerrado e apagado em 5 segundos...*\n\n📅 **Data:** ${dataAtual}\n\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          }
+        ]
+      }],
+      flags: FLAG_V2
+    };
 
-    if (channel.guild.iconURL()) {
-      embedConcluido.setThumbnail(channel.guild.iconURL({ dynamic: true }));
-    }
-
-    await channel.send({ embeds: [embedConcluido] });
+    await channel.send(payloadConcluido);
 
     setTimeout(() => {
       channel.delete().catch(() => null);
@@ -692,7 +1055,7 @@ async function processarPassoRegistroTicket(channel, member) {
 }
 
 // ==========================================
-// INICIALIZAÇÃO E REGISTRO DE COMANDOS
+// INICIALIZAÇÃO
 // ==========================================
 
 client.once(Events.ClientReady, async (c) => {
@@ -712,7 +1075,6 @@ client.once(Events.ClientReady, async (c) => {
   const rest = new REST({ version: '10' }).setToken(cleanToken);
 
   try {
-    // Registra APENAS globalmente para evitar duplicidade de comandos no servidor
     await rest.put(Routes.applicationCommands(cleanClientId), { body: commands });
     console.log('✅ Comandos globais registrados com sucesso!');
   } catch (err) {
@@ -734,7 +1096,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'recrutamento') {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const payload = gerarPayloadPainelRecrutamento(interaction.guild);
+        const payload = gerarPayloadPainelRecrutamentoV2(interaction.guild);
         const msg = await interaction.channel.send(payload);
 
         configRecrutamento.painelChannelId = msg.channel.id;
@@ -745,7 +1107,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'registro') {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        const payload = gerarPayloadRegistro(interaction.guild);
+        const payload = gerarPayloadRegistroV2(interaction.guild);
         const msg = await interaction.channel.send(payload);
 
         configRegistro.painelChannelId = msg.channel.id;
@@ -762,8 +1124,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', flags: MessageFlags.Ephemeral });
 
-        const payload = gerarPayloadMenuConfigRecrutamento(interaction.guild);
-        payload.flags = MessageFlags.Ephemeral;
+        const payload = gerarPayloadMenuConfigRecrutamentoV2(interaction.guild);
+        payload.flags = MessageFlags.Ephemeral | FLAG_V2;
 
         if (customId === 'abrir_config_painel') {
           return interaction.reply(payload);
@@ -775,29 +1137,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (customId === 'abrir_config_registro') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', flags: MessageFlags.Ephemeral });
 
-        const payload = gerarPayloadConfigRegistro();
-        payload.flags = MessageFlags.Ephemeral;
-        return interaction.reply(payload);
+        const payload = gerarPayloadConfigRegistroV2();
+        payload.flags = MessageFlags.Ephemeral | FLAG_V2;
+
+        if (interaction.replied || interaction.deferred) {
+          return interaction.followUp(payload);
+        } else {
+          return interaction.reply(payload);
+        }
+      }
+
+      if (customId === 'btn_menu_cargos_turnos') {
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
+
+        const payload = gerarPayloadConfigCargosTurnosV2();
+        payload.flags = MessageFlags.Ephemeral | FLAG_V2;
+        return interaction.update(payload);
       }
 
       if (customId === 'menu_config_geral') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
-        return interaction.update(gerarPayloadStatusConfigRecrutamento());
+        return interaction.update(gerarPayloadStatusConfigRecrutamentoV2());
       }
 
       if (customId === 'menu_visual_textos') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
-        return interaction.update(gerarPayloadVisualTextosRecrutamento());
+        return interaction.update(gerarPayloadVisualTextosRecrutamentoV2());
       }
 
       if (customId === 'menu_definir_config') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
-        return interaction.update(gerarPayloadDefinirConfigRecrutamento());
+        return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
       if (customId === 'menu_gerenciar_perguntas') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
-        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamento());
+        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
       if (customId === 'iniciar_formulario') {
@@ -908,7 +1283,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         configRecrutamento.perguntas.pop();
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamento());
+        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
       if (customId === 'btn_rem_pergunta_especifica') {
@@ -924,23 +1299,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
           value: index.toString()
         }));
 
-        const embedRemover = new EmbedBuilder()
-          .setTitle('🗑️ Remover Pergunta Específica')
-          .setDescription('Selecione abaixo qual pergunta deseja excluir permanentemente:')
-          .setColor(0xe74c3c);
+        const payloadRemover = {
+          components: [
+            {
+              type: 17,
+              accent_color: 0xe74c3c,
+              components: [
+                { type: 10, content: `# 🗑️ Remover Pergunta Específica\n\nSelecione abaixo qual pergunta deseja excluir permanentemente:` },
+                { type: 14, divider: true, spacing: 1 },
+                {
+                  type: 1,
+                  components: [{
+                    type: 3,
+                    custom_id: 'select_remover_pergunta_especifica',
+                    placeholder: '🗑️ Selecione qual pergunta deseja remover',
+                    options: options
+                  }]
+                },
+                { type: 14, divider: true, spacing: 1 },
+                {
+                  type: 1,
+                  components: [
+                    { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Voltar', emoji: { name: '↩️' } }
+                  ]
+                }
+              ]
+            }
+          ],
+          flags: FLAG_V2
+        };
 
-        const rowSelect = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId('select_remover_pergunta_especifica')
-            .setPlaceholder('🗑️ Selecione qual pergunta deseja remover')
-            .addOptions(options)
-        );
-
-        const rowVoltar = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-        );
-
-        return interaction.update({ embeds: [embedRemover], components: [rowSelect, rowVoltar] });
+        return interaction.update(payloadRemover);
       }
 
       if (customId.startsWith('aprovar_') || customId.startsWith('reprovar_')) {
@@ -960,27 +1349,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (member && configRecrutamento.cargosAprovar.length > 0) await member.roles.add(configRecrutamento.cargosAprovar).catch(() => null);
           if (member && configRecrutamento.cargosRemover.length > 0) await member.roles.remove(configRecrutamento.cargosRemover).catch(() => null);
 
-          const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
-            .setColor(0x2ecc71)
-            .setTitle('✅ Candidatura Aprovada')
-            .addFields({ name: 'Aprovado por', value: `${interaction.user}`, inline: true });
+          const payloadAtualizado = {
+            components: [
+              {
+                type: 17,
+                accent_color: 0x2ecc71,
+                components: [
+                  { type: 10, content: `# ✅ Candidatura Aprovada\n\n**Aprovado por:** ${interaction.user}` }
+                ]
+              }
+            ],
+            flags: FLAG_V2
+          };
 
-          await interaction.update({ embeds: [embedAtual], components: [] });
+          await interaction.update(payloadAtualizado);
 
           if (member) {
-            const embedPvAprovado = new EmbedBuilder()
-              .setTitle('🎉 Recrutamento Aprovado')
-              .setDescription(
-                'Parabéns! Seu recrutamento foi **aprovado**.\n\n' +
-                'Você foi aceito na organização.\n\n' +
-                '📌 **Resultado**\n🟢 Aprovado\n\n' +
-                `🏢 **Servidor**\n${interaction.guild.name}\n\n` +
-                '───────────────────────\n' +
-                '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-              )
-              .setColor(0x2ecc71);
+            const payloadPv = {
+              components: [{
+                type: 17,
+                accent_color: 0x2ecc71,
+                components: [
+                  {
+                    type: 10,
+                    content: `# 🎉 Recrutamento Aprovado\n\nParabéns! Seu recrutamento foi **aprovado**.\n\nVocê foi aceito na organização.\n\n📌 **Resultado**\n🟢 Aprovado\n\n🏢 **Servidor**\n${interaction.guild.name}\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+                  }
+                ]
+              }],
+              flags: FLAG_V2
+            };
 
-            member.send({ embeds: [embedPvAprovado] }).catch(() => null);
+            member.send(payloadPv).catch(() => null);
           }
 
           if (configRecrutamento.anunciosChannelId) {
@@ -988,53 +1387,59 @@ client.on(Events.InteractionCreate, async (interaction) => {
             if (canalAnuncios) {
               const dataAtual = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-              const embedAvisoAprovado = new EmbedBuilder()
-                .setTitle('✅ │ FORMULÁRIO APROVADO')
-                .setDescription(
-                  `Parabéns <@${userId}>, você foi **APROVADO** no processo seletivo.\n\n` +
-                  `🏢 **Servidor:** ${interaction.guild.name}\n` +
-                  `👮 **Instrutor:** ${interaction.user}\n\n` +
-                  '───────────────────────\n' +
-                  '🎉 Seja bem-vindo à organização!\n\n' +
-                  `📅 **Data:** ${dataAtual}\n\n` +
-                  '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-                )
-                .setColor(0x2ecc71);
-
-              if (interaction.guild.iconURL()) {
-                embedAvisoAprovado.setThumbnail(interaction.guild.iconURL({ dynamic: true }));
-              }
+              const containerAnuncio = [
+                {
+                  type: 10,
+                  content: `# ✅ │ FORMULÁRIO APROVADO\n\nParabéns <@${userId}>, você foi **APROVADO** no processo seletivo.\n\n🏢 **Servidor:** ${interaction.guild.name}\n👮 **Instrutor:** ${interaction.user}\n\n───────────────────────\n🎉 Seja bem-vindo à organização!\n\n📅 **Data:** ${dataAtual}\n\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+                }
+              ];
 
               if (configRecrutamento.bannerAprovadoUrl) {
-                embedAvisoAprovado.setImage(configRecrutamento.bannerAprovadoUrl);
+                containerAnuncio.push({
+                  type: 12,
+                  items: [{ media: { url: configRecrutamento.bannerAprovadoUrl } }]
+                });
               }
 
-              await canalAnuncios.send({ embeds: [embedAvisoAprovado] });
+              await canalAnuncios.send({
+                components: [{ type: 17, accent_color: 0x2ecc71, components: containerAnuncio }],
+                flags: FLAG_V2
+              });
             }
           }
 
         } else {
-          const embedAtual = EmbedBuilder.from(interaction.message.embeds[0])
-            .setColor(0xe74c3c)
-            .setTitle('❌ Candidatura Reprovada')
-            .addFields({ name: 'Reprovado por', value: `${interaction.user}`, inline: true });
+          const payloadReprovado = {
+            components: [
+              {
+                type: 17,
+                accent_color: 0xe74c3c,
+                components: [
+                  { type: 10, content: `# ❌ Candidatura Reprovada\n\n**Reprovado por:** ${interaction.user}` }
+                ]
+              }
+            ],
+            flags: FLAG_V2
+          };
 
-          await interaction.update({ embeds: [embedAtual], components: [] });
+          await interaction.update(payloadReprovado);
 
           if (member) {
-            const embedPvReprovado = new EmbedBuilder()
-              .setTitle('❌ Recrutamento Reprovado')
-              .setDescription(
-                'Agradecemos o envio do seu formulário.\n\n' +
-                'Sua candidatura foi **reprovada** pela gerência.\n\n' +
-                '📌 **Resultado**\n🔴 Reprovado\n\n' +
-                `🏢 **Servidor**\n${interaction.guild.name}\n\n` +
-                '───────────────────────\n' +
-                '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-              )
-              .setColor(0xe74c3c);
+            const payloadPvReprovado = {
+              components: [{
+                type: 17,
+                accent_color: 0xe74c3c,
+                components: [
+                  {
+                    type: 10,
+                    content: `# ❌ Recrutamento Reprovado\n\nAgradecemos o envio do seu formulário.\n\nSua candidatura foi **reprovada** pela gerência.\n\n📌 **Resultado**\n🔴 Reprovado\n\n🏢 **Servidor**\n${interaction.guild.name}\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+                  }
+                ]
+              }],
+              flags: FLAG_V2
+            };
 
-            member.send({ embeds: [embedPvReprovado] }).catch(() => null);
+            member.send(payloadPvReprovado).catch(() => null);
           }
         }
       }
@@ -1118,7 +1523,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           configRecrutamento.perguntas.splice(indexRemover, 1);
           await sincronizarPainelRecrutamento(interaction.guild);
         }
-        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamento());
+        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
       if (customId === 'select_categoria') configRecrutamento.categoriaId = interaction.values[0];
@@ -1142,23 +1547,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamento());
+        return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
       if (customId === 'select_categoria_registro') configRegistro.categoriaId = interaction.values[0];
       if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
       if (customId === 'select_responsavel_reg') configRegistro.cargoResponsavel = interaction.values[0];
       if (customId === 'select_cargos_atribuir') configRegistro.cargosAtribuir = interaction.values;
-      if (customId === 'select_cargos_remover_reg') configRegistro.cargosRemover = interaction.values;
+
+      if (customId === 'select_turno_manha') configRegistro.cargosTurnos.manha = interaction.values[0];
+      if (customId === 'select_turno_tarde') configRegistro.cargosTurnos.tarde = interaction.values[0];
+      if (customId === 'select_turno_noite') configRegistro.cargosTurnos.noite = interaction.values[0];
+      if (customId === 'select_turno_madrugada') configRegistro.cargosTurnos.madrugada = interaction.values[0];
 
       if (['select_categoria', 'select_canal_relatorios', 'select_canal_anuncios', 'select_cargos_aprovar', 'select_cargos_remover', 'select_cargo_recrutador'].includes(customId)) {
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.update(gerarPayloadDefinirConfigRecrutamento());
+        return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
-      if (['select_categoria_registro', 'select_log_registro', 'select_responsavel_reg', 'select_cargos_atribuir', 'select_cargos_remover_reg'].includes(customId)) {
+      if (['select_categoria_registro', 'select_log_registro', 'select_responsavel_reg', 'select_cargos_atribuir'].includes(customId)) {
         await sincronizarPainelRegistro(interaction.guild);
-        return interaction.update(gerarPayloadConfigRegistro());
+        return interaction.update(gerarPayloadConfigRegistroV2());
+      }
+
+      if (['select_turno_manha', 'select_turno_tarde', 'select_turno_noite', 'select_turno_madrugada'].includes(customId)) {
+        await sincronizarPainelRegistro(interaction.guild);
+        return interaction.update(gerarPayloadConfigCargosTurnosV2());
       }
     }
 
@@ -1232,17 +1646,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
             timer: null
           });
 
-          const embedBoasVindas = new EmbedBuilder()
-            .setTitle('📋 │ FORMULÁRIO DE RECRUTAMENTO')
-            .setDescription(
-              `👋 Olá ${user}!\n\n` +
-              `🆔 **Candidato:** \`${nomeId}\`\n\n` +
-              `📸 **Envie a FOTO do seu RG** em anexo no chat para dar início às perguntas.\n\n` +
-              `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*`
-            )
-            .setColor(0x3498db);
+          const payloadBoasVindas = {
+            components: [{
+              type: 17,
+              accent_color: 0x3498db,
+              components: [
+                {
+                  type: 10,
+                  content: `# 📋 │ FORMULÁRIO DE RECRUTAMENTO\n\n👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📸 **Envie a FOTO do seu RG** em anexo no chat para dar início às perguntas.\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*`
+                }
+              ]
+            }],
+            flags: FLAG_V2
+          };
 
-          await canalTicket.send({ embeds: [embedBoasVindas] });
+          await canalTicket.send(payloadBoasVindas);
 
           iniciarTimerPergunta(canalTicket.id, canalTicket, user);
 
@@ -1256,7 +1674,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (customId === 'modal_config_tag_nome') {
         configRegistro.tagNome = interaction.fields.getTextInputValue('input_tag_prefixo').trim();
         await sincronizarPainelRegistro(interaction.guild);
-        return interaction.update(gerarPayloadConfigRegistro());
+        return interaction.update(gerarPayloadConfigRegistroV2());
       }
     }
   } catch (err) {
@@ -1278,12 +1696,18 @@ client.on(Events.MessageCreate, async (message) => {
     if (sessaoCandidato.step === 0) {
       const anexo = message.attachments.first();
       if (!anexo || !anexo.contentType?.startsWith('image/')) {
-        const embedErroImage = new EmbedBuilder()
-          .setTitle('❌ │ IMAGEM INVÁLIDA')
-          .setDescription('Por favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.')
-          .setColor(0xe74c3c);
+        const payloadErro = {
+          components: [{
+            type: 17,
+            accent_color: 0xe74c3c,
+            components: [
+              { type: 10, content: `# ❌ │ IMAGEM INVÁLIDA\n\nPor favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.` }
+            ]
+          }],
+          flags: FLAG_V2
+        };
 
-        await message.reply({ embeds: [embedErroImage] });
+        await message.reply(payloadErro);
         iniciarTimerPergunta(message.channel.id, message.channel, message.author);
         return;
       }
@@ -1331,12 +1755,18 @@ client.on(Events.MessageCreate, async (message) => {
     if (sessaoRegistroTicket.step === 4) {
       const anexo = message.attachments.first();
       if (!anexo || !anexo.contentType?.startsWith('image/')) {
-        const embedErroImage = new EmbedBuilder()
-          .setTitle('❌ │ IMAGEM INVÁLIDA')
-          .setDescription('Por favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.')
-          .setColor(0xe74c3c);
+        const payloadErro = {
+          components: [{
+            type: 17,
+            accent_color: 0xe74c3c,
+            components: [
+              { type: 10, content: `# ❌ │ IMAGEM INVÁLIDA\n\nPor favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.` }
+            ]
+          }],
+          flags: FLAG_V2
+        };
 
-        await message.reply({ embeds: [embedErroImage] });
+        await message.reply(payloadErro);
         return;
       }
 
