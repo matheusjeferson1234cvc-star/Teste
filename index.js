@@ -34,10 +34,9 @@ const client = new Client({
 });
 
 // ==========================================
-// CACHES E VARIÁVEIS DE CONFIGURAÇÃO
+// CACHES E CONFIGURAÇÕES
 // ==========================================
 
-// Configurações do Recrutamento
 const configRecrutamento = {
   categoriaId: null,
   relatorioChannelId: null,
@@ -58,7 +57,6 @@ const configRecrutamento = {
   painelMessageId: null
 };
 
-// Configurações do Registro
 const configRegistro = {
   logChannelId: null,
   cargosAtribuir: [],
@@ -74,9 +72,7 @@ const configRegistro = {
 };
 
 const sessoesCandidatos = new Map();
-const sessoesRegistro = new Map();
 
-// Verificação de permissões (Dono do servidor ou Administrador)
 function isDonoOuAdmin(interaction) {
   const isOwner = interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -556,9 +552,8 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
-
 // ==========================================
-// MÓDULO 2: REGISTRO (CONTAINERS V2)
+// MÓDULO 2: REGISTRO (CONTAINERS & MODAIS V2)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -568,9 +563,8 @@ function gerarPayloadRegistroV2(guild) {
     `# ${configRegistro.painelTitulo}\n\n` +
     `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
-    `• 📝 Preencha o formulário de registro.\n` +
-    `• 👤 Informe seus dados corretamente.\n` +
-    `• 📸 Envie o arquivo de imagem do personagem/RG.\n` +
+    `• 📝 Preencha o formulário oficial de registro.\n` +
+    `• 👤 Informe nome, ID, turno e envie a foto numa única tela.\n` +
     `• 🏷️ Seu nome e cargos serão configurados automaticamente.\n` +
     `• ✅ O registro será concluído imediatamente.`;
 
@@ -598,7 +592,7 @@ function gerarPayloadRegistroV2(guild) {
     {
       type: 1,
       components: [
-        { type: 2, style: 2, custom_id: 'iniciar_registro_etapa1', label: 'Registre-se', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_modal_v2_registro', label: 'Registre-se', emoji: { name: '📝' } },
         { type: 2, style: 2, custom_id: 'abrir_config_registro', emoji: { name: '⚙️' } }
       ]
     },
@@ -681,7 +675,6 @@ function gerarPayloadConfigRegistroV2() {
           {
             type: 1,
             components: [
-              { type: 2, style: 1, custom_id: 'btn_status_config_reg', label: 'Configuração Atual', emoji: { name: '🔍' } },
               { type: 2, style: 2, custom_id: 'btn_configurar_tag_nome', label: 'Configurar TAG do nome', emoji: { name: '🏷️' } }
             ]
           },
@@ -691,6 +684,72 @@ function gerarPayloadConfigRegistroV2() {
       }
     ],
     flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// ESTRUTURA COMPLETA V2 DO MODAL DE REGISTRO
+function gerarPayloadFormularioModalV2() {
+  return {
+    type: 9,
+    title: '📋 Formulário de Registro',
+    custom_id: 'submit_registro_v2_completo',
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 4,
+            custom_id: 'v2_reg_nome',
+            label: 'Nome do Personagem',
+            style: 1,
+            placeholder: 'Digite apenas o primeiro nome',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        components: [
+          {
+            type: 4,
+            custom_id: 'v2_reg_id',
+            label: 'ID / Passaporte',
+            style: 1,
+            placeholder: 'Digite seu ID',
+            required: true
+          }
+        ]
+      },
+      {
+        type: 1,
+        components: [
+          {
+            type: 3,
+            custom_id: 'v2_reg_turno',
+            placeholder: 'Selecione seu turno',
+            options: [
+              { label: 'Manhã', value: 'Manhã', description: 'Turno da manhã', emoji: { name: '🌅' } },
+              { label: 'Tarde', value: 'Tarde', description: 'Turno da tarde', emoji: { name: '☀️' } },
+              { label: 'Noite', value: 'Noite', description: 'Turno da noite', emoji: { name: '🌙' } },
+              { label: 'Madrugada', value: 'Madrugada', description: 'Turno da madrugada', emoji: { name: '🌃' } }
+            ]
+          }
+        ]
+      },
+      {
+        type: 1,
+        components: [
+          {
+            type: 13,
+            custom_id: 'v2_reg_foto',
+            label: 'Foto do Personagem (Opcional)',
+            description: 'Envie uma imagem PNG, JPG, GIF ou WEBP.',
+            required: true,
+            max_files: 1
+          }
+        ]
+      }
+    ]
   };
 }
 
@@ -711,9 +770,8 @@ async function sincronizarPainelRegistro(guild) {
   }
 }
 
-
 // ==========================================
-// INICIALIZAÇÃO DO BOT E COMANDOS
+// INICIALIZAÇÃO E COMANDOS
 // ==========================================
 
 client.once(Events.ClientReady, async (c) => {
@@ -726,18 +784,10 @@ client.once(Events.ClientReady, async (c) => {
   if (!cleanClientId || !cleanToken) return;
 
   const commands = [
-    new SlashCommandBuilder()
-      .setName('recrutamento')
-      .setDescription('Envia o painel oficial de recrutamento'),
-    new SlashCommandBuilder()
-      .setName('configuracao')
-      .setDescription('Abre o painel privado de configurações do recrutamento'),
-    new SlashCommandBuilder()
-      .setName('registro')
-      .setDescription('Envia o painel oficial de registro'),
-    new SlashCommandBuilder()
-      .setName('configregistro')
-      .setDescription('Abre o painel privado de configurações do registro')
+    new SlashCommandBuilder().setName('recrutamento').setDescription('Envia o painel oficial de recrutamento'),
+    new SlashCommandBuilder().setName('configuracao').setDescription('Abre o painel privado de configurações do recrutamento'),
+    new SlashCommandBuilder().setName('registro').setDescription('Envia o painel oficial de registro'),
+    new SlashCommandBuilder().setName('configregistro').setDescription('Abre o painel privado de configurações do registro')
   ].map(cmd => cmd.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(cleanToken);
@@ -758,17 +808,15 @@ client.once(Events.ClientReady, async (c) => {
   console.log('==================================================');
 });
 
-
 // ==========================================
-// CENTRAL DE INTERAÇÕES (INTERACTION CREATE)
+// CENTRAL DE INTERAÇÕES
 // ==========================================
 
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 1. SLASH COMMANDS
   if (interaction.isChatInputCommand()) {
     if (!isDonoOuAdmin(interaction)) {
-      return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem executar este comando.', ephemeral: true });
+      return interaction.reply({ content: '❌ **Acesso negado!** Apenas Administradores podem executar este comando.', ephemeral: true });
     }
 
     if (interaction.commandName === 'recrutamento') {
@@ -779,7 +827,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       configRecrutamento.painelChannelId = msg.channel.id;
       configRecrutamento.painelMessageId = msg.id;
 
-      return interaction.editReply({ content: '✅ Painel de Recrutamento enviado com sucesso.' });
+      return interaction.editReply({ content: '✅ Painel de Recrutamento enviado.' });
     }
 
     if (interaction.commandName === 'configuracao') {
@@ -796,7 +844,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       configRegistro.painelChannelId = msg.channel.id;
       configRegistro.painelMessageId = msg.id;
 
-      return interaction.editReply({ content: '✅ Painel de Registro enviado com sucesso.' });
+      return interaction.editReply({ content: '✅ Painel de Registro enviado.' });
     }
 
     if (interaction.commandName === 'configregistro') {
@@ -807,11 +855,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // 2. BOTÕES (BUTTONS)
   if (interaction.isButton()) {
     const customId = interaction.customId;
 
-    // --- BOTÕES DE RECRUTAMENTO ---
+    // --- RECRUTAMENTO ---
     if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
 
@@ -1092,7 +1139,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // --- BOTÕES DE REGISTRO ---
+    // --- REGISTRO ---
     if (customId === 'abrir_config_registro') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
@@ -1101,51 +1148,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply(payload);
     }
 
-    if (customId === 'iniciar_registro_etapa1') {
-      const selectTurno = new StringSelectMenuBuilder()
-        .setCustomId('select_turno_registro')
-        .setPlaceholder('Selecione seu turno')
-        .addOptions([
-          { label: 'Manhã', value: 'Manhã', description: 'Turno da manhã', emoji: '🌅' },
-          { label: 'Tarde', value: 'Tarde', description: 'Turno da tarde', emoji: '☀️' },
-          { label: 'Noite', value: 'Noite', description: 'Turno da noite', emoji: '🌙' },
-          { label: 'Madrugada', value: 'Madrugada', description: 'Turno da madrugada', emoji: '🌃' }
-        ]);
-
-      const row = new ActionRowBuilder().addComponents(selectTurno);
-
-      return interaction.reply({
-        content: '📌 **Passo 1/3:** Selecione abaixo o seu **turno de atuação**:',
-        components: [row],
-        ephemeral: true
-      });
-    }
-
-    if (customId === 'abrir_modal_depois_turno') {
-      const modal = new ModalBuilder()
-        .setCustomId('modal_registro_usuario')
-        .setTitle('📋 Formulário de Registro');
-
-      const inputNome = new TextInputBuilder()
-        .setCustomId('reg_nome')
-        .setLabel('Nome do Personagem')
-        .setPlaceholder('Digite apenas o primeiro nome')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      const inputId = new TextInputBuilder()
-        .setCustomId('reg_id')
-        .setLabel('ID / Passaporte')
-        .setPlaceholder('Digite seu ID')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(inputNome),
-        new ActionRowBuilder().addComponents(inputId)
-      );
-
-      return interaction.showModal(modal);
+    if (customId === 'abrir_modal_v2_registro') {
+      return interaction.respond(gerarPayloadFormularioModalV2());
     }
 
     if (customId === 'btn_configurar_tag_nome') {
@@ -1166,55 +1170,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       modal.addComponents(new ActionRowBuilder().addComponents(inputTag));
       return interaction.showModal(modal);
     }
-
-    if (customId === 'btn_status_config_reg') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-
-      const embedStatus = new EmbedBuilder()
-        .setTitle('🔍 Status Atual do Registro')
-        .setColor(configRegistro.painelCorHex)
-        .addFields(
-          { name: '📌 Canal de LOG', value: configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : 'Não definido', inline: false },
-          { name: '🎖️ Cargos a Atribuir', value: configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
-          { name: '🗑️ Cargos a Remover', value: configRegistro.cargosRemover.length ? configRegistro.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum cargo configurado', inline: false },
-          { name: '📢 Responsável', value: configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : 'Não definido', inline: false },
-          { name: '🏷️ TAG do Nome', value: configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : 'Sem TAG', inline: false }
-        );
-
-      return interaction.reply({ embeds: [embedStatus], ephemeral: true });
-    }
   }
 
-  // 3. MENUS DE SELEÇÃO (SELECT MENUS)
-  if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu()) {
+  // MENUS DE SELEÇÃO
+  if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
     const customId = interaction.customId;
 
-    // String Select - Turno de Registro
-    if (customId === 'select_turno_registro') {
-      const turnoEscolhido = interaction.values[0];
-
-      sessoesRegistro.set(interaction.user.id, { turno: turnoEscolhido });
-
-      const btnProsseguir = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('abrir_modal_depois_turno')
-          .setLabel('Preencher Dados')
-          .setEmoji('📝')
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      return interaction.update({
-        content: `✅ Turno selecionado: **${turnoEscolhido}**\nClique no botão abaixo para preencher seus dados:`,
-        components: [btnProsseguir]
-      });
-    }
-
-    // Seletores administrativos exigem permissão
     if (!isDonoOuAdmin(interaction)) {
       return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
     }
 
-    // Seletores do Recrutamento
+    // Recrutamento
     if (customId === 'select_remover_pergunta_especifica') {
       const indexRemover = parseInt(interaction.values[0], 10);
       if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < configRecrutamento.perguntas.length) {
@@ -1248,7 +1214,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
     }
 
-    // Seletores do Registro
+    // Registro
     if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
     if (customId === 'select_cargos_atribuir') configRegistro.cargosAtribuir = interaction.values;
     if (customId === 'select_cargos_remover_reg') configRegistro.cargosRemover = interaction.values;
@@ -1265,11 +1231,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // 4. SUBMISSÃO DE MODAIS
-  if (interaction.isModalSubmit()) {
+  // SUBMISSÃO DE MODAIS
+  if (interaction.isModalSubmit() || interaction.customId === 'submit_registro_v2_completo') {
     const customId = interaction.customId;
 
-    // Modais de Recrutamento
     if (customId === 'modal_editar_painel') {
       configRecrutamento.painelTitulo = interaction.fields.getTextInputValue('p_titulo');
       configRecrutamento.painelDescricao = interaction.fields.getTextInputValue('p_desc');
@@ -1350,40 +1315,64 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // Modais de Registro
     if (customId === 'modal_config_tag_nome') {
       configRegistro.tagNome = interaction.fields.getTextInputValue('input_tag_prefixo').trim();
       await sincronizarPainelRegistro(interaction.guild);
       return interaction.update(gerarPayloadConfigRegistroV2());
     }
 
-    if (customId === 'modal_registro_usuario') {
-      const nomePersonagem = interaction.fields.getTextInputValue('reg_nome');
-      const idPassaporte = interaction.fields.getTextInputValue('reg_id');
-      const sessao = sessoesRegistro.get(interaction.user.id) || { turno: 'Não informado' };
+    // PROCESSAMENTO DO MODAL V2 UNIFICADO DE REGISTRO
+    if (customId === 'submit_registro_v2_completo') {
+      await interaction.deferReply({ ephemeral: true });
 
-      sessao.nome = nomePersonagem;
-      sessao.id = idPassaporte;
-      sessao.aguardandoFoto = true;
-      sessoesRegistro.set(interaction.user.id, sessao);
+      const nomePersonagem = interaction.fields.getTextInputValue('v2_reg_nome');
+      const idPassaporte = interaction.fields.getTextInputValue('v2_reg_id');
+      const turno = interaction.fields.getTextInputValue('v2_reg_turno') || 'Não informado';
+      const anexoFoto = interaction.fields.getAttachment ? interaction.fields.getAttachment('v2_reg_foto') : null;
 
-      return interaction.reply({
-        content: '📸 **Passo 3/3:** Por favor, **envie a foto do seu personagem/RG** no chat abaixo anexando o arquivo diretamente da sua galeria:',
-        ephemeral: true
-      });
+      const member = interaction.member;
+      const nomeFormatado = `${nomePersonagem} \vert{} ID:${idPassaporte}`;
+      let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
+
+      let nickSucesso = true;
+      if (novoNick.length <= 32) {
+        await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
+      }
+
+      if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
+      if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
+
+      if (configRegistro.logChannelId) {
+        const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
+        if (canalLog) {
+          const embedLog = new EmbedBuilder()
+            .setTitle('📝 Novo Registro Efetuado')
+            .setColor(0x2ecc71)
+            .addFields(
+              { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
+              { name: '🆔 Personagem / ID', value: `\`${nomePersonagem}\` | \`${idPassaporte}\``, inline: true },
+              { name: '⏱️ Turno', value: `\`${turno}\``, inline: true },
+              { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ apelido', inline: false }
+            )
+            .setTimestamp();
+
+          if (anexoFoto && anexoFoto.url) {
+            embedLog.setImage(anexoFoto.url);
+          }
+
+          await canalLog.send({ embeds: [embedLog] });
+        }
+      }
+
+      return interaction.editReply({ content: `🎉 **Registro concluído com sucesso, ${member}!**` });
     }
   }
 });
 
-
-// ==========================================
-// PROCESSAMENTO DE MENSAGENS (FILES / DIÁLOGOS)
-// ==========================================
-
+// PROCESSAMENTO DE RESPOSTAS NO CHAT DO RECRUTAMENTO
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // 1. Processamento de Anexos no Canal do Ticket de Recrutamento
   const sessaoCandidato = sessoesCandidatos.get(message.channel.id);
   if (sessaoCandidato && message.author.id === sessaoCandidato.userId) {
     if (sessaoCandidato.timer) clearTimeout(sessaoCandidato.timer);
@@ -1409,63 +1398,7 @@ client.on(Events.MessageCreate, async (message) => {
       });
 
       await avancarPergunta(message.channel.id, message.channel, message.author);
-      return;
     }
-  }
-
-  // 2. Processamento de Anexo no Registro de Membro
-  const sessaoRegistro = sessoesRegistro.get(message.author.id);
-  if (sessaoRegistro && sessaoRegistro.aguardandoFoto) {
-    const anexo = message.attachments.first();
-    if (!anexo || !anexo.contentType?.startsWith('image/')) {
-      await message.reply('❌ Por favor, envie um **arquivo de imagem válido** (PNG, JPG, WEBP).');
-      return;
-    }
-
-    const member = message.member;
-    const nomeFormatado = `${sessaoRegistro.nome} \vert{} ID:${sessaoRegistro.id}`;
-    let novoNick = nomeFormatado;
-    if (configRegistro.tagNome) {
-      novoNick = `${configRegistro.tagNome}${nomeFormatado}`;
-    }
-
-    let nickSucesso = true;
-    if (novoNick.length <= 32) {
-      await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
-    }
-
-    if (configRegistro.cargosAtribuir.length > 0) {
-      await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
-    }
-    if (configRegistro.cargosRemover.length > 0) {
-      await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
-    }
-
-    if (configRegistro.logChannelId) {
-      const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
-      if (canalLog) {
-        const embedLog = new EmbedBuilder()
-          .setTitle('📝 Novo Registro Efetuado')
-          .setColor(0x2ecc71)
-          .addFields(
-            { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
-            { name: '🆔 Personagem / ID', value: `\`${sessaoRegistro.nome}\` | \`${sessaoRegistro.id}\``, inline: true },
-            { name: '⏱️ Turno', value: `\`${sessaoRegistro.turno}\``, inline: true },
-            { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Permissão insuficiente p/ alterar apelido', inline: false }
-          )
-          .setImage(anexo.url)
-          .setTimestamp();
-
-        await canalLog.send({ embeds: [embedLog] });
-      }
-    }
-
-    sessoesRegistro.delete(message.author.id);
-    await message.delete().catch(() => null);
-
-    await message.channel.send({
-      content: `🎉 **Registro concluído com sucesso, ${member}!** Seus cargos, foto e apelido foram configurados.`
-    }).then(msg => setTimeout(() => msg.delete().catch(() => null), 6000));
   }
 });
 
