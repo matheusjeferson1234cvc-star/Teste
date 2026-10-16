@@ -72,7 +72,7 @@ const configRecrutamento = {
   painelMessageId: null
 };
 
-// Configurações do Registro (ESTÁVEL E CORRIGIDO)
+// Configurações do Registro (COM CARGO RESPONSÁVEL E TAG AUTOMÁTICA)
 const configRegistro = {
   categoriaId: null,
   logChannelId: null,
@@ -573,7 +573,7 @@ async function enviarRelatorioRecrutamento(user, sessao) {
 
 
 // ==========================================
-// MÓDULO 2: REGISTRO (PAINEL DE CONFIGURAÇÕES CORRIGIDO)
+// MÓDULO 2: REGISTRO (PAINEL DE CONFIGURAÇÕES ATUALIZADO)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -626,7 +626,7 @@ function gerarPayloadRegistroV2(guild) {
   };
 }
 
-// PAINEL DE CONFIGURAÇÃO DE REGISTRO Totalmente Estável
+// PAINEL DE CONFIGURAÇÕES DO REGISTRO (INCLUI CARGO RESPONSÁVEL)
 function gerarPayloadConfigRegistroV2() {
   const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
   const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
@@ -638,12 +638,12 @@ function gerarPayloadConfigRegistroV2() {
   const embed = new EmbedBuilder()
     .setTitle('⚙️ Configurações da Central de Registro')
     .setDescription(
-      `Configure abaixo os canais, categoria e cargos do sistema de registro.\n\n` +
+      `Configure abaixo a categoria, canais, cargo responsável e cargos do registro.\n\n` +
       `📁 **Categoria dos Tickets:** ${catTexto}\n` +
       `📌 **Canal de LOG:** ${logTexto}\n` +
+      `🛡️ **Cargo Responsável:** ${resTexto}\n` +
       `🎖️ **Cargos a Atribuir:** ${atrTexto}\n` +
       `🗑️ **Cargos a Remover:** ${remTexto}\n` +
-      `📢 **Cargo Responsável:** ${resTexto}\n` +
       `🏷️ **TAG do Nome:** ${tagTexto}`
     )
     .setColor(0x3498db);
@@ -662,18 +662,16 @@ function gerarPayloadConfigRegistroV2() {
       .setChannelTypes(ChannelType.GuildText)
   );
 
+  const rowResponsavel = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_responsavel_reg')
+      .setPlaceholder('🛡️ Selecione o Cargo Responsável')
+  );
+
   const rowAtribuir = new ActionRowBuilder().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId('select_cargos_atribuir')
       .setPlaceholder('🎖️ Selecione cargo(s) a atribuir')
-      .setMinValues(0)
-      .setMaxValues(5)
-  );
-
-  const rowRemover = new ActionRowBuilder().addComponents(
-    new RoleSelectMenuBuilder()
-      .setCustomId('select_cargos_remover_reg')
-      .setPlaceholder('🗑️ Selecione cargo(s) a remover')
       .setMinValues(0)
       .setMaxValues(5)
   );
@@ -688,7 +686,7 @@ function gerarPayloadConfigRegistroV2() {
 
   return {
     embeds: [embed],
-    components: [rowCategoria, rowLog, rowAtribuir, rowRemover, rowBotoes]
+    components: [rowCategoria, rowLog, rowResponsavel, rowAtribuir, rowBotoes]
   };
 }
 
@@ -709,7 +707,7 @@ async function sincronizarPainelRegistro(guild) {
   }
 }
 
-// LÓGICA DAS PERGUNTAS E AUTO-FECHAMENTO DO TICKET DE REGISTRO
+// APLICAÇÃO AUTOMÁTICA DE TAG, APELIDO E CARGOS
 async function processarPassoRegistroTicket(channel, member) {
   const sessao = sessoesRegistroTicket.get(channel.id);
   if (!sessao) return;
@@ -723,7 +721,7 @@ async function processarPassoRegistroTicket(channel, member) {
   } else if (sessao.step === 4) {
     await channel.send(`📸 **4. Envie a FOTO do seu RG / Personagem** em anexo no chat.`);
   } else if (sessao.step === 5) {
-    // APLICAR CONFIGURAÇÕES AO MEMBRO
+    // 1. ALTERAÇÃO AUTOMÁTICA DO APELIDO/TAG
     const nomeFormatado = `${sessao.nome} \vert{} ID:${sessao.id}`;
     let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
 
@@ -732,10 +730,11 @@ async function processarPassoRegistroTicket(channel, member) {
       await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
     }
 
+    // 2. ATRIBUIÇÃO AUTOMÁTICA DE CARGOS
     if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
     if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
 
-    // LOG
+    // 3. ENVIO DE LOG
     if (configRegistro.logChannelId) {
       const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
       if (canalLog) {
@@ -757,7 +756,7 @@ async function processarPassoRegistroTicket(channel, member) {
 
     sessoesRegistroTicket.delete(channel.id);
 
-    // AUTO-FECHAMENTO EM 5 SEGUNDOS
+    // 4. AUTO-FECHAMENTO
     await channel.send(`🎉 **Registro concluído com sucesso, ${member}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
 
     setTimeout(() => {
@@ -1229,6 +1228,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
+      // RECRUTAMENTO
       if (customId === 'select_categoria') configRecrutamento.categoriaId = interaction.values[0];
       if (customId === 'select_canal_relatorios') configRecrutamento.relatorioChannelId = interaction.values[0];
       if (customId === 'select_canal_anuncios') configRecrutamento.anunciosChannelId = interaction.values[0];
@@ -1253,9 +1253,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
-      // TRATAMENTO DAS CONFIGURAÇÕES DE REGISTRO
+      // SELEÇÃO DO REGISTRO (INCLUI RESPONSÁVEL)
       if (customId === 'select_categoria_registro') configRegistro.categoriaId = interaction.values[0];
       if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
+      if (customId === 'select_responsavel_reg') configRegistro.cargoResponsavel = interaction.values[0];
       if (customId === 'select_cargos_atribuir') configRegistro.cargosAtribuir = interaction.values;
       if (customId === 'select_cargos_remover_reg') configRegistro.cargosRemover = interaction.values;
 
@@ -1264,7 +1265,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
-      if (['select_categoria_registro', 'select_log_registro', 'select_cargos_atribuir', 'select_cargos_remover_reg'].includes(customId)) {
+      if (['select_categoria_registro', 'select_log_registro', 'select_responsavel_reg', 'select_cargos_atribuir', 'select_cargos_remover_reg'].includes(customId)) {
         await sincronizarPainelRegistro(interaction.guild);
         return interaction.update(gerarPayloadConfigRegistroV2());
       }
