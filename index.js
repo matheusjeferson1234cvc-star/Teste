@@ -72,7 +72,7 @@ const configRecrutamento = {
   painelMessageId: null
 };
 
-// Configurações do Registro (POR TICKET)
+// Configurações do Registro (ESTÁVEL E CORRIGIDO)
 const configRegistro = {
   categoriaId: null,
   logChannelId: null,
@@ -573,7 +573,7 @@ async function enviarRelatorioRecrutamento(user, sessao) {
 
 
 // ==========================================
-// MÓDULO 2: REGISTRO POR TICKET (AUTO-FECHAMENTO)
+// MÓDULO 2: REGISTRO (PAINEL DE CONFIGURAÇÕES CORRIGIDO)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -626,6 +626,7 @@ function gerarPayloadRegistroV2(guild) {
   };
 }
 
+// PAINEL DE CONFIGURAÇÃO DE REGISTRO Totalmente Estável
 function gerarPayloadConfigRegistroV2() {
   const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
   const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
@@ -634,89 +635,60 @@ function gerarPayloadConfigRegistroV2() {
   const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ Configurações da Central de Registro')
+    .setDescription(
+      `Configure abaixo os canais, categoria e cargos do sistema de registro.\n\n` +
+      `📁 **Categoria dos Tickets:** ${catTexto}\n` +
+      `📌 **Canal de LOG:** ${logTexto}\n` +
+      `🎖️ **Cargos a Atribuir:** ${atrTexto}\n` +
+      `🗑️ **Cargos a Remover:** ${remTexto}\n` +
+      `📢 **Cargo Responsável:** ${resTexto}\n` +
+      `🏷️ **TAG do Nome:** ${tagTexto}`
+    )
+    .setColor(0x3498db);
+
+  const rowCategoria = new ActionRowBuilder().addComponents(
+    new ChannelSelectMenuBuilder()
+      .setCustomId('select_categoria_registro')
+      .setPlaceholder('📁 Selecione a categoria dos tickets')
+      .setChannelTypes(ChannelType.GuildCategory)
+  );
+
+  const rowLog = new ActionRowBuilder().addComponents(
+    new ChannelSelectMenuBuilder()
+      .setCustomId('select_log_registro')
+      .setPlaceholder('📌 Selecione canal de LOG')
+      .setChannelTypes(ChannelType.GuildText)
+  );
+
+  const rowAtribuir = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_cargos_atribuir')
+      .setPlaceholder('🎖️ Selecione cargo(s) a atribuir')
+      .setMinValues(0)
+      .setMaxValues(5)
+  );
+
+  const rowRemover = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_cargos_remover_reg')
+      .setPlaceholder('🗑️ Selecione cargo(s) a remover')
+      .setMinValues(0)
+      .setMaxValues(5)
+  );
+
+  const rowBotoes = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('btn_configurar_tag_nome')
+      .setLabel('Configurar TAG do Nome')
+      .setEmoji('🏷️')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
   return {
-    components: [
-      {
-        type: 17,
-        accent_color: 0x3498db,
-        components: [
-          { type: 10, content: `# ⚙️ Configuração de Registro\n\nConfigure a categoria, canais e cargos do registro.` },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `📁 **Categoria dos Tickets:** ${catTexto}` },
-          {
-            type: 1,
-            components: [{
-              type: 8,
-              custom_id: 'select_categoria_registro',
-              placeholder: '📁 Selecione a categoria dos tickets',
-              channel_types: [ChannelType.GuildCategory]
-            }]
-          },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `📌 **Canal de LOG:** ${logTexto}` },
-          {
-            type: 1,
-            components: [{
-              type: 8,
-              custom_id: 'select_log_registro',
-              placeholder: '📌 Selecione canal de LOG',
-              channel_types: [ChannelType.GuildText]
-            }]
-          },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `🎖️ **Cargo a atribuir:** ${atrTexto}` },
-          {
-            type: 1,
-            components: [{
-              type: 6,
-              custom_id: 'select_cargos_atribuir',
-              placeholder: '🎖️ Selecione cargo a atribuir',
-              min_values: 0,
-              max_values: 5
-            }]
-          },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `🗑️ **Cargos a remover:** ${remTexto}` },
-          {
-            type: 1,
-            components: [{
-              type: 6,
-              custom_id: 'select_cargos_remover_reg',
-              placeholder: '🗑️ Selecione cargos a remover',
-              min_values: 0,
-              max_values: 5
-            }]
-          },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `📢 **Responsável:** ${resTexto}` },
-          {
-            type: 1,
-            components: [{
-              type: 6,
-              custom_id: 'select_responsavel_reg',
-              placeholder: '📢 Selecione Responsável'
-            }]
-          },
-          { type: 14, divider: true, spacing: 1 },
-
-          { type: 10, content: `🏷️ **TAG do Nome:** ${tagTexto}` },
-          {
-            type: 1,
-            components: [
-              { type: 2, style: 2, custom_id: 'btn_configurar_tag_nome', label: 'Configurar TAG do nome', emoji: { name: '🏷️' } }
-            ]
-          },
-          { type: 14, divider: true, spacing: 1 },
-          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
-        ]
-      }
-    ],
-    flags: MessageFlags.IsComponentsV2
+    embeds: [embed],
+    components: [rowCategoria, rowLog, rowAtribuir, rowRemover, rowBotoes]
   };
 }
 
@@ -737,7 +709,7 @@ async function sincronizarPainelRegistro(guild) {
   }
 }
 
-// LÓGICA DAS PERGUNTAS E FECHAMENTO DO TICKET DE REGISTRO
+// LÓGICA DAS PERGUNTAS E AUTO-FECHAMENTO DO TICKET DE REGISTRO
 async function processarPassoRegistroTicket(channel, member) {
   const sessao = sessoesRegistroTicket.get(channel.id);
   if (!sessao) return;
@@ -751,7 +723,7 @@ async function processarPassoRegistroTicket(channel, member) {
   } else if (sessao.step === 4) {
     await channel.send(`📸 **4. Envie a FOTO do seu RG / Personagem** em anexo no chat.`);
   } else if (sessao.step === 5) {
-    // APLICAR CONFIGURAÇÕES DO USUÁRIO
+    // APLICAR CONFIGURAÇÕES AO MEMBRO
     const nomeFormatado = `${sessao.nome} \vert{} ID:${sessao.id}`;
     let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
 
@@ -763,7 +735,7 @@ async function processarPassoRegistroTicket(channel, member) {
     if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
     if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
 
-    // ENVIAR LOG
+    // LOG
     if (configRegistro.logChannelId) {
       const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
       if (canalLog) {
@@ -785,7 +757,7 @@ async function processarPassoRegistroTicket(channel, member) {
 
     sessoesRegistroTicket.delete(channel.id);
 
-    // FECHAMENTO AUTOMÁTICO DO TICKET
+    // AUTO-FECHAMENTO EM 5 SEGUNDOS
     await channel.send(`🎉 **Registro concluído com sucesso, ${member}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
 
     setTimeout(() => {
@@ -1281,18 +1253,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
+      // TRATAMENTO DAS CONFIGURAÇÕES DE REGISTRO
       if (customId === 'select_categoria_registro') configRegistro.categoriaId = interaction.values[0];
       if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
       if (customId === 'select_cargos_atribuir') configRegistro.cargosAtribuir = interaction.values;
       if (customId === 'select_cargos_remover_reg') configRegistro.cargosRemover = interaction.values;
-      if (customId === 'select_responsavel_reg') configRegistro.cargoResponsavel = interaction.values[0];
 
       if (['select_categoria', 'select_canal_relatorios', 'select_canal_anuncios', 'select_cargos_aprovar', 'select_cargos_remover', 'select_cargo_recrutador'].includes(customId)) {
         await sincronizarPainelRecrutamento(interaction.guild);
         return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
-      if (['select_categoria_registro', 'select_log_registro', 'select_cargos_atribuir', 'select_cargos_remover_reg', 'select_responsavel_reg'].includes(customId)) {
+      if (['select_categoria_registro', 'select_log_registro', 'select_cargos_atribuir', 'select_cargos_remover_reg'].includes(customId)) {
         await sincronizarPainelRegistro(interaction.guild);
         return interaction.update(gerarPayloadConfigRegistroV2());
       }
