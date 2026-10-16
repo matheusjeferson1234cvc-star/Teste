@@ -633,7 +633,6 @@ async function finalizarRecrutamento(channel, user, sessao) {
   if (sessao.timerPergunta) clearTimeout(sessao.timerPergunta);
   if (sessao.timerGeral) clearTimeout(sessao.timerGeral);
 
-  // Garante o envio do relatório mesmo com proteção anti-crash
   try {
     await enviarRelatorioRecrutamento(user, sessao);
   } catch (e) {
@@ -664,7 +663,10 @@ async function finalizarRecrutamento(channel, user, sessao) {
 }
 
 async function enviarRelatorioRecrutamento(user, sessao) {
-  if (!configRecrutamento.relatorioChannelId) return;
+  if (!configRecrutamento.relatorioChannelId) {
+    console.log("⚠️ Canal de relatórios não configurado!");
+    return;
+  }
 
   const canal = await client.channels.fetch(configRecrutamento.relatorioChannelId).catch(() => null);
   if (!canal) return;
@@ -691,7 +693,7 @@ async function enviarRelatorioRecrutamento(user, sessao) {
       });
       containerComponents.push({ type: 14, divider: true, spacing: 1 });
     } catch (e) {
-      containerComponents.push({ type: 10, content: `📸 **Foto do RG:** ⚠️ *Erro ao anexar imagem*` });
+      containerComponents.push({ type: 10, content: `📸 **Foto do RG:** ⚠️ *Erro ao carregar anexo*` });
       containerComponents.push({ type: 14, divider: true, spacing: 1 });
     }
   } else {
@@ -1433,8 +1435,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const member = await interaction.guild.members.fetch(userId).catch(() => null);
 
         if (acao === 'aprovar') {
-          if (member && configRecrutamento.cargosAprovar.length > 0) await member.roles.add(configRecrutamento.cargosAprovar).catch(() => null);
-          if (member && configRecrutamento.cargosRemover.length > 0) await member.roles.remove(configRecrutamento.cargosRemover).catch(() => null);
+          if (member) {
+            if (configRecrutamento.cargosAprovar && configRecrutamento.cargosAprovar.length > 0) {
+              await member.roles.add(configRecrutamento.cargosAprovar).catch((err) => console.error("Erro ao adicionar cargos:", err));
+            }
+            if (configRecrutamento.cargosRemover && configRecrutamento.cargosRemover.length > 0) {
+              await member.roles.remove(configRecrutamento.cargosRemover).catch((err) => console.error("Erro ao remover cargos:", err));
+            }
+          }
 
           const payloadAtualizado = {
             components: [
@@ -1814,8 +1822,9 @@ client.on(Events.MessageCreate, async (message) => {
         resposta: message.content
       });
 
-      if (sessaoCandidato.step < configRecrutamento.perguntas.length) {
-        sessaoCandidato.step += 1;
+      sessaoCandidato.step += 1;
+
+      if (sessaoCandidato.step <= configRecrutamento.perguntas.length) {
         await avancarPergunta(message.channel.id, message.channel, message.author);
       } else {
         await finalizarRecrutamento(message.channel, message.author, sessaoCandidato);
