@@ -17,7 +17,8 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  PermissionsBitField
+  PermissionsBitField,
+  MessageFlags
 } = require('discord.js');
 require('dotenv').config();
 
@@ -61,6 +62,211 @@ function isDonoOuAdmin(interaction) {
   return isOwner || isAdmin;
 }
 
+// PAINEL PRINCIPAL (MODELO NOVO: CONTAINER INTEGRADO V2)
+function gerarPayloadPainelV2(guild) {
+  const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
+
+  const textoConteudo = 
+    `# ${config.painelTitulo}\n\n` +
+    `${config.painelDescricao}\n\n` +
+    `### 🛡️ Etapas do Processo\n` +
+    `• 📝 Preenchimento do formulário\n` +
+    `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
+    `• 🔍 Análise da candidatura\n` +
+    `• 🎶🎤 Entrevista com a equipe\n` +
+    `• ✅ Resultado final`;
+
+  const containerComponents = [];
+
+  // Banner se configurado
+  if (config.painelBannerUrl) {
+    containerComponents.push({
+      type: 12,
+      items: [{ media: { url: config.painelBannerUrl } }]
+    });
+  }
+
+  // Texto principal e Thumbnail (Logo do servidor)
+  if (logoUrl) {
+    containerComponents.push({
+      type: 9, // Section
+      components: [{ type: 10, content: textoConteudo }],
+      accessory: { type: 11, media: { url: logoUrl } }
+    });
+  } else {
+    containerComponents.push({ type: 10, content: textoConteudo });
+  }
+
+  // BOTÕES DENTRO DO BLOCO (EM CIMA DO RODAPÉ)
+  containerComponents.push(
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1, // ActionRow interna
+      components: [
+        { type: 2, style: 2, custom_id: 'iniciar_formulario', label: 'Formulário', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_config_painel', emoji: { name: '⚙️' } }
+      ]
+    },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+  );
+
+  return {
+    components: [{ type: 17, accent_color: config.painelCorHex, components: containerComponents }],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// MENU DE CONFIGURAÇÕES (MODELO NOVO)
+function gerarPayloadMenuConfigV2(guild) {
+  const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
+
+  const textoConteudo = 
+    `# ⚙️ Configuração do Recrutamento\n\n` +
+    `Gerencie o sistema de recrutamento através das opções abaixo.`;
+
+  const textoExplicativo = 
+    `⚙️ **Configuração** — visualize o status atual.\n` +
+    `❓ **Perguntas** — gerencie as perguntas.\n` +
+    `🛠️ **Definir configurações** — altere os canais e cargos do sistema.`;
+
+  const containerComponents = [];
+
+  if (logoUrl) {
+    containerComponents.push({
+      type: 9,
+      components: [{ type: 10, content: textoConteudo }],
+      accessory: { type: 11, media: { url: logoUrl } }
+    });
+  } else {
+    containerComponents.push({ type: 10, content: textoConteudo });
+  }
+
+  containerComponents.push(
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 2, custom_id: 'menu_config_geral', label: 'Configuração', emoji: { name: '⚙️' } },
+        { type: 2, style: 2, custom_id: 'menu_definir_config', label: 'Definir configurações', emoji: { name: '🛠️' } },
+        { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Gerenciar perguntas', emoji: { name: '❓' } }
+      ]
+    },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: textoExplicativo },
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+  );
+
+  return {
+    components: [{ type: 17, accent_color: 0x3498db, components: containerComponents }],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// TELA DE DEFINIR CONFIGURAÇÕES (MODELO NOVO)
+function gerarPayloadDefinirConfigV2() {
+  const catTexto = config.categoriaId ? `<#${config.categoriaId}>` : '❌ Não definido';
+  const relTexto = config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ Não definido';
+
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: `📁 **Categoria dos recrutamentos**\n${catTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_categoria',
+              placeholder: '📁 Selecione a categoria',
+              channel_types: [ChannelType.GuildCategory]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `📄 **Canal de relatórios**\n${relTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_canal_relatorios',
+              placeholder: '📄 Selecione o canal de relatórios',
+              channel_types: [ChannelType.GuildText]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `📢 **Canal de anúncios**\n${anuTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_canal_anuncios',
+              placeholder: '📢 Selecione o canal de anúncios',
+              channel_types: [ChannelType.GuildText]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `🎖️ **Cargo de aprovado**\n${aprTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargos_aprovar',
+              placeholder: '🎖️ Selecione os cargos de aprovado',
+              min_values: 0,
+              max_values: 5
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `🗑️ **Cargos removidos ao aprovar**\n${remTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargos_remover',
+              placeholder: '🗑️ Selecione os cargos a remover',
+              min_values: 0,
+              max_values: 5
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `🛡️ **Cargo de recrutador**\n${recTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 6,
+              custom_id: 'select_cargo_recrutador',
+              placeholder: '🛡️ Selecione o cargo de recrutador'
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
 // Sincroniza o painel público automaticamente
 async function sincronizarPainelPublico(guild) {
   if (!config.painelChannelId || !config.painelMessageId) return;
@@ -72,10 +278,8 @@ async function sincronizarPainelPublico(guild) {
     const mensagem = await canal.messages.fetch(config.painelMessageId).catch(() => null);
     if (!mensagem) return;
 
-    await mensagem.edit({
-      embeds: [gerarEmbedPainelPrincipal(guild || canal.guild)],
-      components: [gerarBotaoFormularioComConfig()]
-    });
+    const payload = gerarPayloadPainelV2(guild || canal.guild);
+    await mensagem.edit(payload);
   } catch (err) {
     console.error('Erro ao sincronizar painel público:', err);
   }
@@ -199,10 +403,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      const msg = await interaction.channel.send({
-        embeds: [gerarEmbedPainelPrincipal(interaction.guild)],
-        components: [gerarBotaoFormularioComConfig()]
-      });
+      const payload = gerarPayloadPainelV2(interaction.guild);
+      const msg = await interaction.channel.send(payload);
 
       config.painelChannelId = msg.channel.id;
       config.painelMessageId = msg.id;
@@ -215,11 +417,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '❌ **Acesso negado!** Apenas o Dono ou Administradores do servidor podem abrir as configurações.', ephemeral: true });
       }
 
-      return interaction.reply({
-        embeds: [gerarEmbedMenuNavegacao(interaction.guild)],
-        components: gerarBotoesConfigGeral(),
-        ephemeral: true
-      });
+      const payload = gerarPayloadMenuConfigV2(interaction.guild);
+      payload.ephemeral = true;
+      return interaction.reply(payload);
     }
     return;
   }
@@ -235,7 +435,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      const payload = { embeds: [gerarEmbedMenuNavegacao(interaction.guild)], components: gerarBotoesConfigGeral() };
+      const payload = gerarPayloadMenuConfigV2(interaction.guild);
       if (interaction.replied || interaction.deferred) {
         payload.ephemeral = true;
         return interaction.followUp(payload);
@@ -247,16 +447,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    if (customId === 'menu_config_geral') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
-
-      const rowVoltar = [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-        )
-      ];
-
-      return interaction.update({ embeds: [gerarEmbedStatusConfiguracoes(interaction.guild)], components: rowVoltar });
+    if (customId === 'menu_definir_config') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      return interaction.update(gerarPayloadDefinirConfigV2());
     }
 
     if (customId === 'iniciar_formulario') {
@@ -275,81 +468,59 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    if (customId === 'menu_visual_textos') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedVisualTextos(interaction.guild)], components: gerarBotoesVisualTextos() });
-    }
+    if (customId === 'menu_config_geral') {
+      const embedStatus = new EmbedBuilder()
+        .setTitle('⚙️ Status Atual das Configurações')
+        .setColor(config.painelCorHex)
+        .addFields(
+          { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : 'Não definida', inline: false },
+          { name: '📡 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : 'Não definido', inline: false },
+          { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : 'Não definido', inline: false },
+          { name: '👮 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : 'Não definido', inline: false },
+          { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
+          { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum cargo configurado', inline: false },
+          { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false }
+        );
 
-    if (customId === 'menu_definir_config' || customId === 'page_canais') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedCanaisCategoria(interaction.guild)], components: gerarSelectsCanaisCategoria() });
-    }
+      const rowVoltar = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
+      );
 
-    if (customId === 'page_cargos') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedCargos(interaction.guild)], components: gerarSelectsCargos() });
+      return interaction.update({ embeds: [embedStatus], components: [rowVoltar] });
     }
 
     if (customId === 'menu_gerenciar_perguntas') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas(interaction.guild)], components: gerarBotoesGerenciarPerguntas() });
-    }
 
-    if (customId === 'btn_editar_painel') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      const embedPerguntas = new EmbedBuilder()
+        .setTitle('❓ Gerenciar Perguntas & Tempo')
+        .setDescription(`**Tempo Atual por Pergunta:** \`${config.tempoPerguntaTexto}\`\n**Total Cadastradas:** \`${config.perguntas.length}/20\``)
+        .setColor(config.painelCorHex);
 
-      const modal = new ModalBuilder()
-        .setCustomId('modal_editar_painel')
-        .setTitle('Personalizar Título, Descrição & Banner');
+      const rows = [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
+        ),
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('select_tempo_pergunta')
+            .setPlaceholder('⏱️ Selecione o tempo por pergunta')
+            .addOptions([
+              { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
+              { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
+              { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
+              { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
+              { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
+            ])
+        ),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
+        )
+      ];
 
-      const inputTitulo = new TextInputBuilder()
-        .setCustomId('p_titulo')
-        .setLabel('Título do Painel')
-        .setValue(config.painelTitulo)
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      const inputDesc = new TextInputBuilder()
-        .setCustomId('p_desc')
-        .setLabel('Descrição do Painel')
-        .setValue(config.painelDescricao)
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
-
-      const inputBanner = new TextInputBuilder()
-        .setCustomId('p_banner')
-        .setLabel('URL Banner Painel Principal')
-        .setPlaceholder('https://...')
-        .setValue(config.painelBannerUrl || '')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(inputTitulo),
-        new ActionRowBuilder().addComponents(inputDesc),
-        new ActionRowBuilder().addComponents(inputBanner)
-      );
-
-      return interaction.showModal(modal);
-    }
-
-    if (customId === 'btn_editar_banner_aprovacao') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-
-      const modal = new ModalBuilder()
-        .setCustomId('modal_editar_banner_aprovacao')
-        .setTitle('Banner de Aprovação');
-
-      const inputAprovado = new TextInputBuilder()
-        .setCustomId('p_banner_aprovado')
-        .setLabel('URL Banner de APROVADO')
-        .setPlaceholder('https://i.imgur.com/exemplo.png')
-        .setValue(config.bannerAprovadoUrl || '')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(inputAprovado));
-      return interaction.showModal(modal);
+      return interaction.update({ embeds: [embedPerguntas], components: rows });
     }
 
     if (customId === 'btn_add_pergunta') {
@@ -379,38 +550,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       config.perguntas.pop();
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas(interaction.guild)], components: gerarBotoesGerenciarPerguntas() });
-    }
-
-    if (customId === 'btn_rem_pergunta_especifica') {
-      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
-
-      if (config.perguntas.length === 0) {
-        return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
-      }
-
-      const options = config.perguntas.map((p, index) => ({
-        label: `Pergunta ${index + 1}`,
-        description: p.length > 50 ? p.substring(0, 47) + '...' : p,
-        value: index.toString()
-      }));
-
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId('select_remover_pergunta_especifica')
-        .setPlaceholder('🗑️ Selecione qual pergunta deseja remover')
-        .addOptions(options);
-
-      const rowSelect = new ActionRowBuilder().addComponents(selectMenu);
-      const rowVoltar = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
-      );
-
-      const embedRemover = new EmbedBuilder()
-        .setTitle('🗑️ Remover Pergunta Específica')
-        .setDescription('Selecione abaixo qual pergunta deseja excluir permanentemente do formulário:')
-        .setColor(config.painelCorHex);
-
-      return interaction.update({ embeds: [embedRemover], components: [rowSelect, rowVoltar] });
+      return interaction.reply({ content: '✅ Última pergunta removida com sucesso!', ephemeral: true });
     }
 
     if (customId === 'btn_ver_perguntas') {
@@ -534,39 +674,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const customId = interaction.customId;
 
-    if (customId === 'select_remover_pergunta_especifica') {
-      const indexRemover = parseInt(interaction.values[0], 10);
-      if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < config.perguntas.length) {
-        config.perguntas.splice(indexRemover, 1);
-        await sincronizarPainelPublico(interaction.guild);
-      }
-      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas(interaction.guild)], components: gerarBotoesGerenciarPerguntas() });
-    }
-
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
     if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
     if (customId === 'select_cargos_aprovar') config.cargosAprovar = interaction.values;
     if (customId === 'select_cargos_remover') config.cargosRemover = interaction.values;
     if (customId === 'select_cargo_recrutador') config.cargoRecrutador = interaction.values[0];
-
-    if (customId === 'select_cor_painel') {
-      const valor = interaction.values[0];
-      const mapaCores = {
-        '0xe74c3c': 'Vermelho',
-        '0x3498db': 'Azul',
-        '0x2ecc71': 'Verde',
-        '0xf1c40f': 'Amarelo',
-        '0x9b59b6': 'Roxo',
-        '0x2b2d31': 'Cinza Escuro / Preto'
-      };
-
-      config.painelCorHex = parseInt(valor, 16);
-      config.painelCorNome = mapaCores[valor] || 'Customizada';
-
-      await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedVisualTextos(interaction.guild)], components: gerarBotoesVisualTextos() });
-    }
 
     if (customId === 'select_tempo_pergunta') {
       const valorMs = parseInt(interaction.values[0], 10);
@@ -582,46 +695,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas(interaction.guild)], components: gerarBotoesGerenciarPerguntas() });
+      return interaction.reply({ content: `✅ Tempo ajustado para **${config.tempoPerguntaTexto}**!`, ephemeral: true });
     }
 
     await sincronizarPainelPublico(interaction.guild);
-
-    if (['select_categoria', 'select_canal_relatorios', 'select_canal_anuncios'].includes(customId)) {
-      return interaction.update({ embeds: [gerarEmbedCanaisCategoria(interaction.guild)], components: gerarSelectsCanaisCategoria() });
-    } else {
-      return interaction.update({ embeds: [gerarEmbedCargos(interaction.guild)], components: gerarSelectsCargos() });
-    }
+    return interaction.update(gerarPayloadDefinirConfigV2());
   }
 
   if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'modal_editar_painel') {
-      config.painelTitulo = interaction.fields.getTextInputValue('p_titulo');
-      config.painelDescricao = interaction.fields.getTextInputValue('p_desc');
-      
-      const bannerInput = interaction.fields.getTextInputValue('p_banner');
-      config.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
-
-      await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedVisualTextos(interaction.guild)], components: gerarBotoesVisualTextos() });
-    }
-
-    if (interaction.customId === 'modal_editar_banner_aprovacao') {
-      const aprovadoInput = interaction.fields.getTextInputValue('p_banner_aprovado');
-      if (aprovadoInput.trim().startsWith('http')) {
-        config.bannerAprovadoUrl = aprovadoInput.trim();
-      }
-
-      await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedVisualTextos(interaction.guild)], components: gerarBotoesVisualTextos() });
-    }
-
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
       config.perguntas.push(novaPergunta);
 
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.update({ embeds: [gerarEmbedGerenciarPerguntas(interaction.guild)], components: gerarBotoesGerenciarPerguntas() });
+      return interaction.reply({ content: '✅ Pergunta adicionada com sucesso!', ephemeral: true });
     }
 
     if (interaction.customId === 'modal_iniciar_recrutamento') {
@@ -732,7 +819,7 @@ async function enviarRelatorio(user, sessao) {
 
   sessao.respostas.forEach((r, idx) => {
     embed.addFields({
-      name: `❓ P${idx + 1}:${r.pergunta}`,
+      name: `❓ P${idx + 1}: ${r.pergunta}`,
       value: `> ${r.resposta || '*Sem resposta*'}`
     });
   });
@@ -745,257 +832,6 @@ async function enviarRelatorio(user, sessao) {
   const textoMencao = config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
-}
-
-// PAINEL PRINCIPAL
-function gerarEmbedPainelPrincipal(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle(config.painelTitulo)
-    .setDescription(
-      `${config.painelDescricao}\n\n` +
-      `🛡️ **Etapas do Processo**\n` +
-      `• 📝 Preenchimento do formulário\n` +
-      `• ⏱️ Você terá **${config.tempoPerguntaTexto}** para responder cada pergunta\n` +
-      `• 🔍 Análise da candidatura\n` +
-      `• 🎶🎤 Entrevista com a equipe\n` +
-      `• ✅ Resultado final\n\n` +
-      `───────────────────────\n` +
-      `🤖 Organizações • Roleplay | Desenvolvido por Cetus`
-    )
-    .setColor(config.painelCorHex);
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  if (config.painelBannerUrl) {
-    embed.setImage(config.painelBannerUrl);
-  }
-
-  return embed;
-}
-
-function gerarBotaoFormularioComConfig() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('iniciar_formulario').setLabel('Formulário').setEmoji('📝').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('abrir_config_painel').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
-  );
-}
-
-function gerarEmbedMenuNavegacao(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('⚙️ Central de Configurações')
-    .setDescription(
-      'Selecione uma das opções abaixo para gerenciar o sistema de recrutamento:\n\n' +
-      '───────────────────────\n' +
-      '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
-    )
-    .setColor(config.painelCorHex);
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarEmbedStatusConfiguracoes(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('⚙️ Configuração do Recrutamento')
-    .setDescription('Confira abaixo o estado atual do sistema.')
-    .setColor(config.painelCorHex)
-    .addFields(
-      { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : 'Não definida', inline: false },
-      { name: '📡 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : 'Não definido', inline: false },
-      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : 'Não definido', inline: false },
-      { name: '👮 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : 'Não definido', inline: false },
-      { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
-      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
-      { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false },
-      { name: '‎', value: '───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
-    );
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarBotoesConfigGeral() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_config_geral').setLabel('Config').setEmoji('⚙️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_visual_textos').setLabel('Visual & Textos').setEmoji('🎨').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_definir_config').setLabel('Definir configurações').setEmoji('🛠️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Gerenciar perguntas').setEmoji('❓').setStyle(ButtonStyle.Secondary)
-    )
-  ];
-}
-
-function gerarEmbedVisualTextos(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('🎨 Configurações de Visual & Textos')
-    .setDescription(
-      'Edite a aparência do painel público e mensagens do bot:\n\n' +
-      '• **Título & Descrição**: Textos do painel principal.\n' +
-      '• **Cor Borda Lateral**: Cor do painel público.\n' +
-      '• **Banner de Aprovação**: URL da imagem do anúncio de aprovados.'
-    )
-    .setColor(config.painelCorHex)
-    .addFields(
-      { name: '📌 Título Atual', value: `\`${config.painelTitulo}\``, inline: false },
-      { name: '🎨 Cor Lateral', value: `\`${config.painelCorNome}\``, inline: false },
-      { name: '🖼️ Banner Aprovado Atual', value: config.bannerAprovadoUrl ? `[Clique para ver o Banner](${config.bannerAprovadoUrl})` : '❌ *Não configurado*', inline: false },
-      { name: '‎', value: '───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
-    );
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarBotoesVisualTextos() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_editar_painel').setLabel('✏️ Editar Título & Descrição').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('btn_editar_banner_aprovacao').setLabel('🖼️ Definir Banner de Aprovação').setStyle(ButtonStyle.Success)
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('select_cor_painel')
-        .setPlaceholder('🎨 Selecione a Cor da Barra Lateral')
-        .addOptions([
-          { label: 'Verde (Padrão Aprovado)', value: '0x2ecc71', description: 'Cor verde' },
-          { label: 'Vermelho', value: '0xe74c3c', description: 'Cor vermelha clássica' },
-          { label: 'Azul', value: '0x3498db', description: 'Cor azul' },
-          { label: 'Amarelo', value: '0xf1c40f', description: 'Cor amarela' },
-          { label: 'Roxo', value: '0x9b59b6', description: 'Cor roxa' },
-          { label: 'Preto / Cinza Escuro', value: '0x2b2d31', description: 'Cor escura minimalista' }
-        ])
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
-    )
-  ];
-}
-
-function gerarEmbedCanaisCategoria(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('📁 Configurar Canais e Categoria')
-    .setColor(config.painelCorHex)
-    .addFields(
-      { name: '📁 Categoria dos recrutamentos', value: config.categoriaId ? `<#${config.categoriaId}>` : '❌ *Não definida*', inline: false },
-      { name: '📄 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ *Não definido*', inline: false },
-      { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ *Não definido*', inline: false },
-      { name: '‎', value: '───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
-    );
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarSelectsCanaisCategoria() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_categoria').setPlaceholder('📁 Selecione a categoria').setChannelTypes(ChannelType.GuildCategory)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_relatorios').setPlaceholder('📄 Selecione o canal de relatórios').setChannelTypes(ChannelType.GuildText)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ChannelSelectMenuBuilder().setCustomId('select_canal_anuncios').setPlaceholder('📢 Selecione o canal de anúncios').setChannelTypes(ChannelType.GuildText)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('page_cargos').setLabel('Próximo: Cargos ➡️').setStyle(ButtonStyle.Primary)
-    )
-  ];
-}
-
-function gerarEmbedCargos(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('🛡️ Configurar Cargos')
-    .setColor(config.painelCorHex)
-    .addFields(
-      { name: '🎖️ Cargo de aprovado', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ *Não definido*', inline: false },
-      { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ *Nenhum cargo configurado*', inline: false },
-      { name: '🛡️ Cargo de recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ *Não definido*', inline: false },
-      { name: '‎', value: '───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
-    );
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarSelectsCargos() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_aprovar').setPlaceholder('🎖️ Selecione os cargos de aprovado').setMinValues(0).setMaxValues(5)
-    ),
-    new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargos_remover').setPlaceholder('🗑️ Selecione os cargos a remover').setMinValues(0).setMaxValues(5)
-    ),
-    new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('select_cargo_recrutador').setPlaceholder('🛡️ Selecione o cargo de recrutador')
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('page_canais').setLabel('⬅️ Anterior: Canais').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
-    )
-  ];
-}
-
-function gerarEmbedGerenciarPerguntas(guild) {
-  const embed = new EmbedBuilder()
-    .setTitle('❓ Gerenciar Perguntas & Tempo')
-    .setDescription('Cadastre as perguntas do formulário e defina o tempo limite de resposta.')
-    .setColor(config.painelCorHex)
-    .addFields(
-      { name: '⏱️ Tempo Atual por Pergunta', value: `\`${config.tempoPerguntaTexto}\``, inline: false },
-      { name: `📋 Perguntas Cadastradas: ${config.perguntas.length}/20`, value: config.perguntas.length === 0 ? 'Nenhuma pergunta cadastrada.' : `Há ${config.perguntas.length} pergunta(s) ativa(s).` },
-      { name: '‎', value: '───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus', inline: false }
-    );
-
-  if (guild && guild.iconURL()) {
-    embed.setThumbnail(guild.iconURL({ dynamic: true }));
-  }
-
-  return embed;
-}
-
-function gerarBotoesGerenciarPerguntas() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('btn_rem_pergunta_especifica').setLabel('🗑️ Remover Específica').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId('select_tempo_pergunta')
-        .setPlaceholder('⏱️ Selecione o tempo por pergunta')
-        .addOptions([
-          { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
-          { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
-          { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
-          { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
-          { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
-        ])
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
-    )
-  ];
 }
 
 client.login(process.env.DISCORD_TOKEN);
