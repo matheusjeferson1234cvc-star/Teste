@@ -112,7 +112,8 @@ function gerarPayloadPainelRecrutamentoV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRecrutamento.painelTitulo}\n\n` + `${configRecrutamento.painelDescricao}\n\n` +
+    `# ${configRecrutamento.painelTitulo}\n\n` +
+    `${configRecrutamento.painelDescricao}\n\n` +
     `### 🛡️ Etapas do Processo\n` +
     `• 📝 Preenchimento do formulário\n` +
     `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** para responder cada pergunta\n` +
@@ -207,9 +208,12 @@ function gerarPayloadMenuConfigRecrutamentoV2(guild) {
 }
 
 function gerarPayloadStatusConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida';
+  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   const textoConteudo = 
     `# ⚙️ Status Atual das Configurações\n\n` +
@@ -246,7 +250,8 @@ function gerarPayloadStatusConfigRecrutamentoV2() {
 }
 
 function gerarPayloadVisualTextosRecrutamentoV2() {
-  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado'; const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
+  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado';
+  const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
 
   const textoConteudo = 
     `# 🎨 Configurações de Visual & Textos\n\n` +
@@ -344,9 +349,12 @@ function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
 }
 
 function gerarPayloadDefinirConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido';
+  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   return {
     components: [
@@ -509,9 +517,8 @@ async function avancarPergunta(channelId, channel, user) {
     return;
   }
 
-  if (sessao.step < configRecrutamento.perguntas.length) {
-    const proximaPergunta = configRecrutamento.perguntas[sessao.step];
-    sessao.step += 1;
+  if (sessao.step <= configRecrutamento.perguntas.length) {
+    const proximaPergunta = configRecrutamento.perguntas[sessao.step - 1];
 
     const payloadProx = {
       components: [{
@@ -616,8 +623,34 @@ async function enviarRelatorioRecrutamento(user, sessao) {
 
   const files = [];
   const containerComponents = [
-    { type: 10, content: `# 📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}\n\n👤 **Candidato:** ${user} (\`${user.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nomeIdPersonagem}\`` }, { type: 14, divider: true, spacing: 1 } ];  if (sessao.rgImageUrl) { const anexoFoto = new AttachmentBuilder(sessao.rgImageUrl, { name: 'recrutamento_rg.png' }); files.push(anexoFoto);  containerComponents.push({ type: 12, items: [{ media: { url: 'attachment://recrutamento_rg.png' } }] }); containerComponents.push({ type: 14, divider: true, spacing: 1 }); }  containerComponents.push( { type: 10, content: textoRespostas }, { type: 14, divider: true, spacing: 1 }, { type: 1, components: [ { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
-        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' } ] } );  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
+    { type: 10, content: `# 📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}\n\n👤 **Candidato:** ${user} (\`${user.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nomeIdPersonagem}\`` },
+    { type: 14, divider: true, spacing: 1 }
+  ];
+
+  if (sessao.rgImageUrl) {
+    const anexoFoto = new AttachmentBuilder(sessao.rgImageUrl, { name: 'recrutamento_rg.png' });
+    files.push(anexoFoto);
+
+    containerComponents.push({
+      type: 12,
+      items: [{ media: { url: 'attachment://recrutamento_rg.png' } }]
+    });
+    containerComponents.push({ type: 14, divider: true, spacing: 1 });
+  }
+
+  containerComponents.push(
+    { type: 10, content: textoRespostas },
+    { type: 14, divider: true, spacing: 1 },
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
+        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' }
+      ]
+    }
+  );
+
+  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({
     content: textoMencao,
@@ -635,7 +668,8 @@ function gerarPayloadRegistroV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRegistro.painelTitulo}\n\n` + `${configRegistro.painelDescricao}\n\n` +
+    `# ${configRegistro.painelTitulo}\n\n` +
+    `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
     `• 📝 Clique em **Registre-se** abaixo.\n` +
     `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
@@ -681,8 +715,10 @@ function gerarPayloadRegistroV2(guild) {
 }
 
 function gerarPayloadConfigRegistroV2() {
-  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida'; const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
-  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido'; const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
+  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
+  const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
+  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
   const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não configurado';
@@ -1159,6 +1195,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'iniciar_formulario') {
+        // Limite de 10 tickets de recrutamento simultâneos
+        if (sessoesCandidatos.size >= 10) {
+          return interaction.reply({
+            content: '⚠️ **Fila cheia!** No momento há 10 recrutamentos simultâneos em andamento. Aguarde alguns instantes para que uma vaga seja liberada.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
         const pendente = await temFormularioPendente(interaction.guild, interaction.user.id);
         if (pendente) {
           return interaction.reply({
@@ -1707,6 +1751,7 @@ client.on(Events.MessageCreate, async (message) => {
         resposta: message.content
       });
 
+      sessaoCandidato.step += 1;
       await avancarPergunta(message.channel.id, message.channel, message.author);
       return;
     }
