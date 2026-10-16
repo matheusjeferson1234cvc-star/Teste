@@ -62,7 +62,7 @@ function isDonoOuAdmin(interaction) {
   return isOwner || isAdmin;
 }
 
-// PAINEL PRINCIPAL (MODELO NOVO: CONTAINER INTEGRADO V2)
+// 1. PAINEL PRINCIPAL (PÚBLICO)
 function gerarPayloadPainelV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
@@ -78,7 +78,6 @@ function gerarPayloadPainelV2(guild) {
 
   const containerComponents = [];
 
-  // Banner se configurado
   if (config.painelBannerUrl) {
     containerComponents.push({
       type: 12,
@@ -86,10 +85,9 @@ function gerarPayloadPainelV2(guild) {
     });
   }
 
-  // Texto principal e Thumbnail (Logo do servidor)
   if (logoUrl) {
     containerComponents.push({
-      type: 9, // Section
+      type: 9,
       components: [{ type: 10, content: textoConteudo }],
       accessory: { type: 11, media: { url: logoUrl } }
     });
@@ -97,11 +95,10 @@ function gerarPayloadPainelV2(guild) {
     containerComponents.push({ type: 10, content: textoConteudo });
   }
 
-  // BOTÕES DENTRO DO BLOCO (EM CIMA DO RODAPÉ)
   containerComponents.push(
     { type: 14, divider: true, spacing: 1 },
     {
-      type: 1, // ActionRow interna
+      type: 1,
       components: [
         { type: 2, style: 2, custom_id: 'iniciar_formulario', label: 'Formulário', emoji: { name: '📝' } },
         { type: 2, style: 2, custom_id: 'abrir_config_painel', emoji: { name: '⚙️' } }
@@ -117,7 +114,7 @@ function gerarPayloadPainelV2(guild) {
   };
 }
 
-// MENU DE CONFIGURAÇÕES (MODELO NOVO)
+// 2. MENU PRINCIPAL DE CONFIGURAÇÃO
 function gerarPayloadMenuConfigV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
@@ -127,8 +124,9 @@ function gerarPayloadMenuConfigV2(guild) {
 
   const textoExplicativo = 
     `⚙️ **Configuração** — visualize o status atual.\n` +
-    `❓ **Perguntas** — gerencie as perguntas.\n` +
-    `🛠️ **Definir configurações** — altere os canais e cargos do sistema.`;
+    `🎨 **Visual & Textos** — altere títulos, descrição e banners.\n` +
+    `🛠️ **Definir configurações** — altere os canais e cargos do sistema.\n` +
+    `❓ **Perguntas** — gerencie as perguntas e tempo limite.`;
 
   const containerComponents = [];
 
@@ -148,8 +146,9 @@ function gerarPayloadMenuConfigV2(guild) {
       type: 1,
       components: [
         { type: 2, style: 2, custom_id: 'menu_config_geral', label: 'Configuração', emoji: { name: '⚙️' } },
+        { type: 2, style: 2, custom_id: 'menu_visual_textos', label: 'Visual & Textos', emoji: { name: '🎨' } },
         { type: 2, style: 2, custom_id: 'menu_definir_config', label: 'Definir configurações', emoji: { name: '🛠️' } },
-        { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Gerenciar perguntas', emoji: { name: '❓' } }
+        { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Perguntas', emoji: { name: '❓' } }
       ]
     },
     { type: 14, divider: true, spacing: 1 },
@@ -164,7 +163,152 @@ function gerarPayloadMenuConfigV2(guild) {
   };
 }
 
-// TELA DE DEFINIR CONFIGURAÇÕES (MODELO NOVO)
+// 3. ABA CONFIGURAÇÃO (STATUS ATUAL)
+function gerarPayloadStatusConfigV2() {
+  const catTexto = config.categoriaId ? `<#${config.categoriaId}>` : '❌ Não definida';
+  const relTexto = config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : '❌ Não definido';
+
+  const textoConteudo = 
+    `# ⚙️ Status Atual das Configurações\n\n` +
+    `📁 **Categoria:** ${catTexto}\n` +
+    `📡 **Canal de relatórios:** ${relTexto}\n` +
+    `📢 **Canal de anúncios:** ${anuTexto}\n` +
+    `👮 **Cargo recrutador:** ${recTexto}\n` +
+    `✅ **Cargos ao aprovar:** ${aprTexto}\n` +
+    `🗑️ **Cargos a remover:** ${remTexto}\n` +
+    `❓ **Perguntas cadastradas:** \`${config.perguntas.length}/20\`\n` +
+    `⏱️ **Tempo por pergunta:** \`${config.tempoPerguntaTexto}\``;
+
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// 4. ABA VISUAL & TEXTOS
+function gerarPayloadVisualTextosV2() {
+  const bannerInfo = config.painelBannerUrl ? `[Clique aqui para ver](${config.painelBannerUrl})` : '❌ Não configurado';
+  const bannerAprovInfo = config.bannerAprovadoUrl ? `[Clique aqui para ver](${config.bannerAprovadoUrl})` : '❌ Não configurado';
+
+  const textoConteudo = 
+    `# 🎨 Configurações de Visual & Textos\n\n` +
+    `📌 **Título Atual:** \`${config.painelTitulo}\`\n` +
+    `🎨 **Cor da Borda:** \`${config.painelCorNome}\`\n` +
+    `🖼️ **Banner do Painel:** ${bannerInfo}\n` +
+    `🖼️ **Banner de Aprovação:** ${bannerAprovInfo}`;
+
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 1, custom_id: 'btn_editar_painel', label: 'Editar Título & Descrição', emoji: { name: '✏️' } },
+              { type: 2, style: 3, custom_id: 'btn_editar_banner_aprovacao', label: 'Banner de Aprovação', emoji: { name: '🖼️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// 5. ABA GERENCIAR PERGUNTAS
+function gerarPayloadGerenciarPerguntasV2() {
+  const listaPerguntas = config.perguntas.length > 0 
+    ? config.perguntas.map((p, i) => `**${i + 1}.**${p}`).join('\n') 
+    : '*Nenhuma pergunta cadastrada.*';
+
+  const textoConteudo = 
+    `# ❓ Gerenciar Perguntas & Tempo\n\n` +
+    `⏱️ **Tempo Atual por Pergunta:** \`${config.tempoPerguntaTexto}\`\n` +
+    `📋 **Perguntas Cadastradas (${config.perguntas.length}/20):**\n${listaPerguntas}`;
+
+  return {
+    components: [
+      {
+        type: 17,
+        accent_color: 0x3498db,
+        components: [
+          { type: 10, content: textoConteudo },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 3, custom_id: 'btn_add_pergunta', label: 'Adicionar', emoji: { name: '➕' } },
+              { type: 2, style: 4, custom_id: 'btn_rem_pergunta', label: 'Remover Última', emoji: { name: '➖' } },
+              { type: 2, style: 4, custom_id: 'btn_rem_pergunta_especifica', label: 'Remover Específica', emoji: { name: '🗑️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [{
+              type: 3, // String Select Menu
+              custom_id: 'select_tempo_pergunta',
+              placeholder: '⏱️ Selecione o tempo por pergunta',
+              options: [
+                { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
+                { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
+                { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
+                { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
+                { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
+              ]
+            }]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 2, custom_id: 'menu_navegacao_principal', label: 'Voltar', emoji: { name: '↩️' } }
+            ]
+          },
+          { type: 14, divider: true, spacing: 1 },
+          { type: 10, content: `🤖 Organizações • Roleplay | Desenvolvido por Cetus` }
+        ]
+      }
+    ],
+    flags: MessageFlags.IsComponentsV2
+  };
+}
+
+// 6. ABA DEFINIR CONFIGURAÇÕES (CANAL/CARGO)
 function gerarPayloadDefinirConfigV2() {
   const catTexto = config.categoriaId ? `<#${config.categoriaId}>` : '❌ Não definido';
   const relTexto = config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : '❌ Não definido';
@@ -447,9 +591,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
+    if (customId === 'menu_config_geral') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      return interaction.update(gerarPayloadStatusConfigV2());
+    }
+
+    if (customId === 'menu_visual_textos') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      return interaction.update(gerarPayloadVisualTextosV2());
+    }
+
     if (customId === 'menu_definir_config') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
       return interaction.update(gerarPayloadDefinirConfigV2());
+    }
+
+    if (customId === 'menu_gerenciar_perguntas') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+      return interaction.update(gerarPayloadGerenciarPerguntasV2());
     }
 
     if (customId === 'iniciar_formulario') {
@@ -468,59 +627,61 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    if (customId === 'menu_config_geral') {
-      const embedStatus = new EmbedBuilder()
-        .setTitle('⚙️ Status Atual das Configurações')
-        .setColor(config.painelCorHex)
-        .addFields(
-          { name: '📁 Categoria', value: config.categoriaId ? `<#${config.categoriaId}>` : 'Não definida', inline: false },
-          { name: '📡 Canal de relatórios', value: config.relatorioChannelId ? `<#${config.relatorioChannelId}>` : 'Não definido', inline: false },
-          { name: '📢 Canal de anúncios', value: config.anunciosChannelId ? `<#${config.anunciosChannelId}>` : 'Não definido', inline: false },
-          { name: '👮 Cargo recrutador', value: config.cargoRecrutador ? `<@&${config.cargoRecrutador}>` : 'Não definido', inline: false },
-          { name: '✅ Cargos adicionar ao aprovar', value: config.cargosAprovar.length ? config.cargosAprovar.map(c => `<@&${c}>`).join(', ') : 'Não definido', inline: false },
-          { name: '🗑️ Cargos removidos ao aprovar', value: config.cargosRemover.length ? config.cargosRemover.map(c => `<@&${c}>`).join(', ') : 'Nenhum cargo configurado', inline: false },
-          { name: '❓ Perguntas', value: `\`${config.perguntas.length}/20\``, inline: false }
-        );
-
-      const rowVoltar = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
-      );
-
-      return interaction.update({ embeds: [embedStatus], components: [rowVoltar] });
-    }
-
-    if (customId === 'menu_gerenciar_perguntas') {
+    if (customId === 'btn_editar_painel') {
       if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
-      const embedPerguntas = new EmbedBuilder()
-        .setTitle('❓ Gerenciar Perguntas & Tempo')
-        .setDescription(`**Tempo Atual por Pergunta:** \`${config.tempoPerguntaTexto}\`\n**Total Cadastradas:** \`${config.perguntas.length}/20\``)
-        .setColor(config.painelCorHex);
+      const modal = new ModalBuilder()
+        .setCustomId('modal_editar_painel')
+        .setTitle('Personalizar Título, Descrição & Banner');
 
-      const rows = [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('btn_add_pergunta').setLabel('➕ Adicionar').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId('btn_rem_pergunta').setLabel('➖ Remover última').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId('btn_ver_perguntas').setLabel('👁️ Ver perguntas').setStyle(ButtonStyle.Primary)
-        ),
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId('select_tempo_pergunta')
-            .setPlaceholder('⏱️ Selecione o tempo por pergunta')
-            .addOptions([
-              { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
-              { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
-              { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
-              { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
-              { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
-            ])
-        ),
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('menu_navegacao_principal').setLabel('↩️ Voltar').setStyle(ButtonStyle.Secondary)
-        )
-      ];
+      const inputTitulo = new TextInputBuilder()
+        .setCustomId('p_titulo')
+        .setLabel('Título do Painel')
+        .setValue(config.painelTitulo)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
 
-      return interaction.update({ embeds: [embedPerguntas], components: rows });
+      const inputDesc = new TextInputBuilder()
+        .setCustomId('p_desc')
+        .setLabel('Descrição do Painel')
+        .setValue(config.painelDescricao)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true);
+
+      const inputBanner = new TextInputBuilder()
+        .setCustomId('p_banner')
+        .setLabel('URL Banner Painel Principal')
+        .setPlaceholder('https://...')
+        .setValue(config.painelBannerUrl || '')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(inputTitulo),
+        new ActionRowBuilder().addComponents(inputDesc),
+        new ActionRowBuilder().addComponents(inputBanner)
+      );
+
+      return interaction.showModal(modal);
+    }
+
+    if (customId === 'btn_editar_banner_aprovacao') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
+      const modal = new ModalBuilder()
+        .setCustomId('modal_editar_banner_aprovacao')
+        .setTitle('Banner de Aprovação');
+
+      const inputAprovado = new TextInputBuilder()
+        .setCustomId('p_banner_aprovado')
+        .setLabel('URL Banner de APROVADO')
+        .setPlaceholder('https://i.imgur.com/exemplo.png')
+        .setValue(config.bannerAprovadoUrl || '')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(inputAprovado));
+      return interaction.showModal(modal);
     }
 
     if (customId === 'btn_add_pergunta') {
@@ -550,22 +711,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       config.perguntas.pop();
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.reply({ content: '✅ Última pergunta removida com sucesso!', ephemeral: true });
+      return interaction.update(gerarPayloadGerenciarPerguntasV2());
     }
 
-    if (customId === 'btn_ver_perguntas') {
-      const embedPerguntas = new EmbedBuilder().setTitle('📋 Perguntas do Recrutamento').setColor(config.painelCorHex);
+    if (customId === 'btn_rem_pergunta_especifica') {
+      if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+
       if (config.perguntas.length === 0) {
-        embedPerguntas.setDescription('❌ **Nenhuma pergunta cadastrada.**');
-      } else {
-        const lista = config.perguntas.map((p, i) => `**${i + 1}.**${p}`).join('\n\n');
-        embedPerguntas.setDescription(lista);
+        return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
       }
 
-      const rowVoltar = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('menu_gerenciar_perguntas').setLabel('Voltar').setStyle(ButtonStyle.Secondary)
-      );
-      return interaction.update({ embeds: [embedPerguntas], components: [rowVoltar] });
+      const options = config.perguntas.map((p, index) => ({
+        label: `Pergunta ${index + 1}`,
+        description: p.length > 50 ? p.substring(0, 47) + '...' : p,
+        value: index.toString()
+      }));
+
+      const payloadRemover = {
+        components: [
+          {
+            type: 17,
+            accent_color: 0xe74c3c,
+            components: [
+              { type: 10, content: `# 🗑️ Remover Pergunta Específica\n\nSelecione abaixo qual pergunta deseja excluir permanentemente:` },
+              { type: 14, divider: true, spacing: 1 },
+              {
+                type: 1,
+                components: [{
+                  type: 3,
+                  custom_id: 'select_remover_pergunta_especifica',
+                  placeholder: '🗑️ Selecione qual pergunta deseja remover',
+                  options: options
+                }]
+              },
+              { type: 14, divider: true, spacing: 1 },
+              {
+                type: 1,
+                components: [
+                  { type: 2, style: 2, custom_id: 'menu_gerenciar_perguntas', label: 'Voltar', emoji: { name: '↩️' } }
+                ]
+              }
+            ]
+          }
+        ],
+        flags: MessageFlags.IsComponentsV2
+      };
+
+      return interaction.update(payloadRemover);
     }
 
     // APROVAÇÃO E REPROVAÇÃO
@@ -674,6 +866,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const customId = interaction.customId;
 
+    if (customId === 'select_remover_pergunta_especifica') {
+      const indexRemover = parseInt(interaction.values[0], 10);
+      if (!isNaN(indexRemover) && indexRemover >= 0 && indexRemover < config.perguntas.length) {
+        config.perguntas.splice(indexRemover, 1);
+        await sincronizarPainelPublico(interaction.guild);
+      }
+      return interaction.update(gerarPayloadGerenciarPerguntasV2());
+    }
+
     if (customId === 'select_categoria') config.categoriaId = interaction.values[0];
     if (customId === 'select_canal_relatorios') config.relatorioChannelId = interaction.values[0];
     if (customId === 'select_canal_anuncios') config.anunciosChannelId = interaction.values[0];
@@ -695,7 +896,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       await sincronizarPainelPublico(interaction.guild);
-      return interaction.reply({ content: `✅ Tempo ajustado para **${config.tempoPerguntaTexto}**!`, ephemeral: true });
+      return interaction.update(gerarPayloadGerenciarPerguntasV2());
     }
 
     await sincronizarPainelPublico(interaction.guild);
@@ -703,6 +904,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isModalSubmit()) {
+    if (interaction.customId === 'modal_editar_painel') {
+      config.painelTitulo = interaction.fields.getTextInputValue('p_titulo');
+      config.painelDescricao = interaction.fields.getTextInputValue('p_desc');
+      
+      const bannerInput = interaction.fields.getTextInputValue('p_banner');
+      config.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
+
+      await sincronizarPainelPublico(interaction.guild);
+      return interaction.reply({ content: '✅ Título, Descrição e Banner atualizados com sucesso!', ephemeral: true });
+    }
+
+    if (interaction.customId === 'modal_editar_banner_aprovacao') {
+      const aprovadoInput = interaction.fields.getTextInputValue('p_banner_aprovado');
+      if (aprovadoInput.trim().startsWith('http')) {
+        config.bannerAprovadoUrl = aprovadoInput.trim();
+      }
+
+      await sincronizarPainelPublico(interaction.guild);
+      return interaction.reply({ content: '✅ Banner de aprovação atualizado com sucesso!', ephemeral: true });
+    }
+
     if (interaction.customId === 'modal_add_pergunta') {
       const novaPergunta = interaction.fields.getTextInputValue('texto_pergunta');
       config.perguntas.push(novaPergunta);
