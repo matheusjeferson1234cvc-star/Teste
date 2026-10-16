@@ -61,8 +61,9 @@ const configRecrutamento = {
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  tempoPerguntaMs: 180000,
-  tempoPerguntaTexto: '3 minutos',
+  tempoPerguntaMs: 30000, // Tempo por pergunta (ex: 30 segundos)
+  tempoPerguntaTexto: '30 segundos',
+  tempoGeralInatividadeMs: 600000, // Limite geral de inatividade total do ticket (10 minutos)
   perguntas: [],
   painelTitulo: '📋 │ Central de Recrutamento',
   painelDescricao: 'Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.',
@@ -112,13 +113,12 @@ function gerarPayloadPainelRecrutamentoV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRecrutamento.painelTitulo}\n\n` +
-    `${configRecrutamento.painelDescricao}\n\n` +
+    `# ${configRecrutamento.painelTitulo}\n\n` + `${configRecrutamento.painelDescricao}\n\n` +
     `### 🛡️ Etapas do Processo\n` +
     `• 📝 Preenchimento do formulário\n` +
-    `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** para responder cada pergunta\n` +
+    `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** por pergunta (pula automaticamente caso não responda)\n` +
+    `• ⌛ Tempo total limite do formulário: **10 minutos**\n` +
     `• 🔍 Análise da candidatura\n` +
-    `• 🎶🎤 Entrevista com a equipe\n` +
     `• ✅ Resultado final`;
 
   const containerComponents = [];
@@ -208,12 +208,9 @@ function gerarPayloadMenuConfigRecrutamentoV2(guild) {
 }
 
 function gerarPayloadStatusConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida';
-  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
-  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
-  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   const textoConteudo = 
     `# ⚙️ Status Atual das Configurações\n\n` +
@@ -250,8 +247,7 @@ function gerarPayloadStatusConfigRecrutamentoV2() {
 }
 
 function gerarPayloadVisualTextosRecrutamentoV2() {
-  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado';
-  const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
+  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado'; const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
 
   const textoConteudo = 
     `# 🎨 Configurações de Visual & Textos\n\n` +
@@ -326,9 +322,8 @@ function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
               options: [
                 { label: '30 Segundos', value: '30000', description: '30 segundos por pergunta' },
                 { label: '1 Minuto', value: '60000', description: '1 minuto por pergunta' },
-                { label: '3 Minutos (Padrão)', value: '180000', description: '3 minutos por pergunta' },
-                { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' },
-                { label: '10 Minutos', value: '600000', description: '10 minutos por pergunta' }
+                { label: '3 Minutos', value: '180000', description: '3 minutos por pergunta' },
+                { label: '5 Minutos', value: '300000', description: '5 minutos por pergunta' }
               ]
             }]
           },
@@ -349,12 +344,9 @@ function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
 }
 
 function gerarPayloadDefinirConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido';
-  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
-  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
-  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   return {
     components: [
@@ -493,7 +485,7 @@ async function avancarPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
 
-  if (sessao.timer) clearTimeout(sessao.timer);
+  if (sessao.timerPergunta) clearTimeout(sessao.timerPergunta);
 
   if (sessao.step === 0) {
     if (configRecrutamento.perguntas.length === 0) {
@@ -506,7 +498,7 @@ async function avancarPergunta(channelId, channel, user) {
         type: 17,
         accent_color: 0x3498db,
         components: [
-          { type: 10, content: `# 📋 │ PERGUNTA 1/${configRecrutamento.perguntas.length}\n\n>${configRecrutamento.perguntas[0]}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*` }
+          { type: 10, content: `# 📋 │ PERGUNTA 1/${configRecrutamento.perguntas.length}\n\n>${configRecrutamento.perguntas[0]}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*` }
         ]
       }],
       flags: FLAG_V2
@@ -518,14 +510,15 @@ async function avancarPergunta(channelId, channel, user) {
   }
 
   if (sessao.step <= configRecrutamento.perguntas.length) {
-    const proximaPergunta = configRecrutamento.perguntas[sessao.step - 1];
+    const perguntaAtualIndex = sessao.step - 1;
+    const proximaPergunta = configRecrutamento.perguntas[perguntaAtualIndex];
 
     const payloadProx = {
       components: [{
         type: 17,
         accent_color: 0x3498db,
         components: [
-          { type: 10, content: `# 📋 │ PERGUNTA ${sessao.step}/${configRecrutamento.perguntas.length}\n\n>${proximaPergunta}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*` }
+          { type: 10, content: `# 📋 │ PERGUNTA ${sessao.step}/${configRecrutamento.perguntas.length}\n\n>${proximaPergunta}\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*` }
         ]
       }],
       flags: FLAG_V2
@@ -538,13 +531,61 @@ async function avancarPergunta(channelId, channel, user) {
   }
 }
 
+// Timer individual de cada pergunta (pula de pergunta sem fechar o ticket)
 function iniciarTimerPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
 
-  sessao.timer = setTimeout(async () => {
+  sessao.timerPergunta = setTimeout(async () => {
     if (!sessoesCandidatos.has(channelId)) return;
 
+    if (sessao.step === 0) {
+      // Foto do RG não enviada no tempo
+      sessao.rgImageUrl = null;
+      await channel.send({
+        components: [{
+          type: 17,
+          accent_color: 0xe67e22,
+          components: [{ type: 10, content: `⚠️ **Tempo esgotado!** Foto do RG não enviada. Pulando para a próxima etapa...` }]
+        }],
+        flags: FLAG_V2
+      });
+      sessao.step = 1;
+      await avancarPergunta(channelId, channel, user);
+      return;
+    }
+
+    if (sessao.step > 0 && sessao.step <= configRecrutamento.perguntas.length) {
+      const perguntaAtual = configRecrutamento.perguntas[sessao.step - 1];
+      sessao.respostas.push({
+        pergunta: perguntaAtual,
+        resposta: '⚠️ *Tempo esgotado / Não respondeu*'
+      });
+
+      await channel.send({
+        components: [{
+          type: 17,
+          accent_color: 0xe67e22,
+          components: [{ type: 10, content: `⚠️ **Tempo esgotado!** Pergunta não respondida. Pulando para a próxima...` }]
+        }],
+        flags: FLAG_V2
+      });
+
+      sessao.step += 1;
+      await avancarPergunta(channelId, channel, user);
+    }
+  }, configRecrutamento.tempoPerguntaMs);
+}
+
+// Timer de inatividade geral (limite máximo total do ticket)
+function iniciarTimerGeralInatividade(channelId, channel, user) {
+  const sessao = sessoesCandidatos.get(channelId);
+  if (!sessao) return;
+
+  sessao.timerGeral = setTimeout(async () => {
+    if (!sessoesCandidatos.has(channelId)) return;
+
+    if (sessao.timerPergunta) clearTimeout(sessao.timerPergunta);
     sessoesCandidatos.delete(channelId);
 
     const payloadExpirado = {
@@ -554,7 +595,7 @@ function iniciarTimerPergunta(channelId, channel, user) {
         components: [
           {
             type: 10,
-            content: `# ⏰ Recrutamento expirado\n\nOlá! Seu recrutamento foi **encerrado por inatividade**.\n\n⏰ Você não respondeu a pergunta em até **${configRecrutamento.tempoPerguntaTexto}**.\n🗑️ O canal do recrutamento foi fechado.\n\nSe ainda quiser participar, utilize o painel de recrutamento e inicie um novo processo. Boa sorte! 🍀\n\n───────────────────────\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+            content: `# ⏰ Recrutamento expirado\n\nOlá! Seu ticket foi **encerrado por inatividade total** (limite de 10 minutos excedido).\n\n🗑️ O canal foi fechado.`
           }
         ]
       }],
@@ -563,28 +604,25 @@ function iniciarTimerPergunta(channelId, channel, user) {
 
     await user.send(payloadExpirado).catch(() => null);
 
-    const payloadAviso = {
+    await channel.send({
       components: [{
         type: 17,
         accent_color: 0xe74c3c,
-        components: [
-          { type: 10, content: `# ⏰ │ RECRUTAMENTO EXPIRADO\n\n⚠️ **Sessão expirada por inatividade!** O canal será finalizado e apagado em 5 segundos...` }
-        ]
+        components: [{ type: 10, content: `# ⏰ │ RECRUTAMENTO EXPIRADO\n\n⚠️ **Limite de tempo total (10 minutos) estourado!** O canal será apagado em 5 segundos...` }]
       }],
       flags: FLAG_V2
-    };
-
-    await channel.send(payloadAviso);
+    });
 
     setTimeout(() => {
       channel.delete().catch(() => null);
     }, 5000);
 
-  }, configRecrutamento.tempoPerguntaMs);
+  }, configRecrutamento.tempoGeralInatividadeMs);
 }
 
 async function finalizarRecrutamento(channel, user, sessao) {
-  if (sessao.timer) clearTimeout(sessao.timer);
+  if (sessao.timerPergunta) clearTimeout(sessao.timerPergunta);
+  if (sessao.timerGeral) clearTimeout(sessao.timerGeral);
 
   await enviarRelatorioRecrutamento(user, sessao);
   sessoesCandidatos.delete(channel.id);
@@ -636,6 +674,9 @@ async function enviarRelatorioRecrutamento(user, sessao) {
       items: [{ media: { url: 'attachment://recrutamento_rg.png' } }]
     });
     containerComponents.push({ type: 14, divider: true, spacing: 1 });
+  } else {
+    containerComponents.push({ type: 10, content: `📸 **Foto do RG:** ❌ *Não enviada / Tempo esgotado*` });
+    containerComponents.push({ type: 14, divider: true, spacing: 1 });
   }
 
   containerComponents.push(
@@ -645,12 +686,7 @@ async function enviarRelatorioRecrutamento(user, sessao) {
       type: 1,
       components: [
         { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
-        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' }
-      ]
-    }
-  );
-
-  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
+        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' } ] } );  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({
     content: textoMencao,
@@ -668,8 +704,7 @@ function gerarPayloadRegistroV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRegistro.painelTitulo}\n\n` +
-    `${configRegistro.painelDescricao}\n\n` +
+    `# ${configRegistro.painelTitulo}\n\n` + `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
     `• 📝 Clique em **Registre-se** abaixo.\n` +
     `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
@@ -715,10 +750,8 @@ function gerarPayloadRegistroV2(guild) {
 }
 
 function gerarPayloadConfigRegistroV2() {
-  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
-  const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
-  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
+  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida'; const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
+  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido'; const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
   const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não configurado';
@@ -1195,7 +1228,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'iniciar_formulario') {
-        // Limite de 10 tickets de recrutamento simultâneos
         if (sessoesCandidatos.size >= 10) {
           return interaction.reply({
             content: '⚠️ **Fila cheia!** No momento há 10 recrutamentos simultâneos em andamento. Aguarde alguns instantes para que uma vaga seja liberada.',
@@ -1670,7 +1702,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
             step: 0,
             respostas: [],
             rgImageUrl: null,
-            timer: null
+            timerPergunta: null,
+            timerGeral: null
           });
 
           const payloadBoasVindas = {
@@ -1680,7 +1713,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
               components: [
                 {
                   type: 10,
-                  content: `# 📋 │ FORMULÁRIO DE RECRUTAMENTO\n\n👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📸 **Envie a FOTO do seu RG** em anexo no chat para dar início às perguntas.\n\n⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*`
+                  content: `# 📋 │ FORMULÁRIO DE RECRUTAMENTO\n\n👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📸 **Envie a FOTO do seu RG** em anexo no chat para dar início às perguntas.\n\n⏱️ *Tempo por etapa: **${configRecrutamento.tempoPerguntaTexto}** (se não responder, pula para a próxima).*`
                 }
               ]
             }],
@@ -1690,6 +1723,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await canalTicket.send(payloadBoasVindas);
 
           iniciarTimerPergunta(canalTicket.id, canalTicket, user);
+          iniciarTimerGeralInatividade(canalTicket.id, canalTicket, user);
 
           return interaction.reply({ content: `✅ Canal criado com sucesso: ${canalTicket}`, flags: MessageFlags.Ephemeral });
         } catch (err) {
@@ -1718,7 +1752,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   const sessaoCandidato = sessoesCandidatos.get(message.channel.id);
   if (sessaoCandidato && message.author.id === sessaoCandidato.userId) {
-    if (sessaoCandidato.timer) clearTimeout(sessaoCandidato.timer);
+    if (sessaoCandidato.timerPergunta) clearTimeout(sessaoCandidato.timerPergunta);
 
     if (sessaoCandidato.step === 0) {
       const anexo = message.attachments.first();
@@ -1740,19 +1774,24 @@ client.on(Events.MessageCreate, async (message) => {
       }
 
       sessaoCandidato.rgImageUrl = anexo.url;
+      sessaoCandidato.step = 1;
       await avancarPergunta(message.channel.id, message.channel, message.author);
       return;
     }
 
-    if (sessaoCandidato.step > 0 && sessaoCandidato.step <= configRecrutamento.perguntas.length) {
+    if (sessaoCandidato.step > 0) {
       const perguntaAtual = configRecrutamento.perguntas[sessaoCandidato.step - 1];
       sessaoCandidato.respostas.push({
         pergunta: perguntaAtual,
         resposta: message.content
       });
 
-      sessaoCandidato.step += 1;
-      await avancarPergunta(message.channel.id, message.channel, message.author);
+      if (sessaoCandidato.step < configRecrutamento.perguntas.length) {
+        sessaoCandidato.step += 1;
+        await avancarPergunta(message.channel.id, message.channel, message.author);
+      } else {
+        await finalizarRecrutamento(message.channel, message.author, sessaoCandidato);
+      }
       return;
     }
   }
