@@ -72,15 +72,16 @@ const configRecrutamento = {
   painelMessageId: null
 };
 
-// Configurações do Registro
+// Configurações do Registro (POR TICKET)
 const configRegistro = {
+  categoriaId: null,
   logChannelId: null,
   cargosAtribuir: [],
   cargosRemover: [],
   cargoResponsavel: null,
   tagNome: '',
   painelTitulo: '👤 │ Central de Registro',
-  painelDescricao: 'Utilize este painel para realizar seu **registro oficial** na organização.\n\nApós concluir o formulário, seus dados serão processados e sua identificação será atualizada automaticamente.',
+  painelDescricao: 'Utilize este painel para realizar seu **registro oficial** na organização.\n\nClique no botão abaixo para abrir seu ticket privado de registro.',
   painelBannerUrl: null,
   painelCorHex: 0x2ecc71,
   painelChannelId: null,
@@ -88,7 +89,7 @@ const configRegistro = {
 };
 
 const sessoesCandidatos = new Map();
-const sessoesRegistro = new Map();
+const sessoesRegistroTicket = new Map();
 
 function isDonoOuAdmin(interaction) {
   if (!interaction.guild) return false;
@@ -570,8 +571,9 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
+
 // ==========================================
-// MÓDULO 2: REGISTRO (100% ESTÁVEL E FUNCIONAL)
+// MÓDULO 2: REGISTRO POR TICKET (AUTO-FECHAMENTO)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -581,10 +583,10 @@ function gerarPayloadRegistroV2(guild) {
     `# ${configRegistro.painelTitulo}\n\n` +
     `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
-    `• 📝 Preencha o formulário de registro.\n` +
-    `• 👤 Informe Nome, ID e Turno no modal.\n` +
-    `• 📸 Envie a foto do seu RG logo em seguida no chat.\n` +
-    `• 🏷️ Seu nome e cargos serão configurados automaticamente.`;
+    `• 📝 Clique em **Registre-se** abaixo.\n` +
+    `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
+    `• 👤 Responda às perguntas e envie a foto do seu RG no chat.\n` +
+    `• 🔒 Após a conclusão, seu nome e cargos serão definidos e o **ticket será fechado automaticamente**.`;
 
   const containerComponents = [];
 
@@ -610,7 +612,7 @@ function gerarPayloadRegistroV2(guild) {
     {
       type: 1,
       components: [
-        { type: 2, style: 2, custom_id: 'abrir_modal_registro_seguro', label: 'Registre-se', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'iniciar_ticket_registro', label: 'Registre-se', emoji: { name: '📝' } },
         { type: 2, style: 2, custom_id: 'abrir_config_registro', emoji: { name: '⚙️' } }
       ]
     },
@@ -625,6 +627,7 @@ function gerarPayloadRegistroV2(guild) {
 }
 
 function gerarPayloadConfigRegistroV2() {
+  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
   const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
   const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
   const remTexto = configRegistro.cargosRemover.length ? configRegistro.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
@@ -637,7 +640,19 @@ function gerarPayloadConfigRegistroV2() {
         type: 17,
         accent_color: 0x3498db,
         components: [
-          { type: 10, content: `# ⚙️ Configuração de Registro\n\nConfigure os canais e cargos do sistema abaixo.` },
+          { type: 10, content: `# ⚙️ Configuração de Registro\n\nConfigure a categoria, canais e cargos do registro.` },
+          { type: 14, divider: true, spacing: 1 },
+
+          { type: 10, content: `📁 **Categoria dos Tickets:** ${catTexto}` },
+          {
+            type: 1,
+            components: [{
+              type: 8,
+              custom_id: 'select_categoria_registro',
+              placeholder: '📁 Selecione a categoria dos tickets',
+              channel_types: [ChannelType.GuildCategory]
+            }]
+          },
           { type: 14, divider: true, spacing: 1 },
 
           { type: 10, content: `📌 **Canal de LOG:** ${logTexto}` },
@@ -722,13 +737,70 @@ async function sincronizarPainelRegistro(guild) {
   }
 }
 
+// LÓGICA DAS PERGUNTAS E FECHAMENTO DO TICKET DE REGISTRO
+async function processarPassoRegistroTicket(channel, member) {
+  const sessao = sessoesRegistroTicket.get(channel.id);
+  if (!sessao) return;
+
+  if (sessao.step === 1) {
+    await channel.send(`👤 **1. Qual é o NOME do seu personagem?**\n*(Digite apenas o primeiro nome no chat)*`);
+  } else if (sessao.step === 2) {
+    await channel.send(`🆔 **2. Qual é o seu ID / Passaporte?**\n*(Digite o seu número de ID no chat)*`);
+  } else if (sessao.step === 3) {
+    await channel.send(`⏱️ **3. Qual é o seu Turno de Atuação?**\n*(Exemplo: Manhã, Tarde, Noite ou Madrugada)*`);
+  } else if (sessao.step === 4) {
+    await channel.send(`📸 **4. Envie a FOTO do seu RG / Personagem** em anexo no chat.`);
+  } else if (sessao.step === 5) {
+    // APLICAR CONFIGURAÇÕES DO USUÁRIO
+    const nomeFormatado = `${sessao.nome} \vert{} ID:${sessao.id}`;
+    let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
+
+    let nickSucesso = true;
+    if (novoNick.length <= 32) {
+      await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
+    }
+
+    if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
+    if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
+
+    // ENVIAR LOG
+    if (configRegistro.logChannelId) {
+      const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
+      if (canalLog) {
+        const embedLog = new EmbedBuilder()
+          .setTitle('📝 Novo Registro Efetuado')
+          .setColor(0x2ecc71)
+          .addFields(
+            { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
+            { name: '🆔 Personagem / ID', value: `\`${sessao.nome}\` | \`${sessao.id}\``, inline: true },
+            { name: '⏱️ Turno', value: `\`${sessao.turno}\``, inline: true },
+            { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
+          )
+          .setImage(sessao.fotoUrl)
+          .setTimestamp();
+
+        await canalLog.send({ embeds: [embedLog] });
+      }
+    }
+
+    sessoesRegistroTicket.delete(channel.id);
+
+    // FECHAMENTO AUTOMÁTICO DO TICKET
+    await channel.send(`🎉 **Registro concluído com sucesso, ${member}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
+
+    setTimeout(() => {
+      channel.delete().catch(() => null);
+    }, 5000);
+  }
+}
+
 // ==========================================
 // INICIALIZAÇÃO
 // ==========================================
 
 client.once(Events.ClientReady, async (c) => {
   console.log('==================================================');
-  console.log(`🤖 BOT ONLINE NA DISCLOUD: ${c.user.tag} (ID:${c.user.id})`);
+  console.log(`🤖 BOT ONLINE NA DISCLOUD: ${c.user.tag} (ID: ${c.user.id})`);
 
   const cleanClientId = process.env.CLIENT_ID ? process.env.CLIENT_ID.trim() : null;
   const cleanToken = process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.trim() : null;
@@ -768,11 +840,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       if (!isDonoOuAdmin(interaction)) {
-        return interaction.reply({ content: '❌ **Acesso negado!** Apenas Administradores podem executar este comando.', ephemeral: true });
+        return interaction.reply({ content: '❌ **Acesso negado!** Apenas Administradores podem executar este comando.', flags: MessageFlags.Ephemeral });
       }
 
       if (interaction.commandName === 'recrutamento') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const payload = gerarPayloadPainelRecrutamentoV2(interaction.guild);
         const msg = await interaction.channel.send(payload);
 
@@ -784,12 +856,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'configuracao') {
         const payload = gerarPayloadMenuConfigRecrutamentoV2(interaction.guild);
-        payload.ephemeral = true;
+        payload.flags = MessageFlags.Ephemeral;
         return interaction.reply(payload);
       }
 
       if (interaction.commandName === 'registro') {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const payload = gerarPayloadRegistroV2(interaction.guild);
         const msg = await interaction.channel.send(payload);
 
@@ -801,7 +873,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.commandName === 'configregistro') {
         const payload = gerarPayloadConfigRegistroV2();
-        payload.ephemeral = true;
+        payload.flags = MessageFlags.Ephemeral;
         return interaction.reply(payload);
       }
       return;
@@ -812,14 +884,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       // RECRUTAMENTO (INTACTO)
       if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', flags: MessageFlags.Ephemeral });
 
         const payload = gerarPayloadMenuConfigRecrutamentoV2(interaction.guild);
         if (interaction.replied || interaction.deferred) {
-          payload.ephemeral = true;
+          payload.flags = MessageFlags.Ephemeral;
           return interaction.followUp(payload);
         } else if (customId === 'abrir_config_painel') {
-          payload.ephemeral = true;
+          payload.flags = MessageFlags.Ephemeral;
           return interaction.reply(payload);
         } else {
           return interaction.update(payload);
@@ -827,22 +899,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'menu_config_geral') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
         return interaction.update(gerarPayloadStatusConfigRecrutamentoV2());
       }
 
       if (customId === 'menu_visual_textos') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
         return interaction.update(gerarPayloadVisualTextosRecrutamentoV2());
       }
 
       if (customId === 'menu_definir_config') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
         return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
       if (customId === 'menu_gerenciar_perguntas') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
@@ -863,7 +935,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'btn_editar_painel') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         const modal = new ModalBuilder()
           .setCustomId('modal_editar_painel')
@@ -901,7 +973,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'btn_editar_banner_aprovacao') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         const modal = new ModalBuilder()
           .setCustomId('modal_editar_banner_aprovacao')
@@ -920,10 +992,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'btn_add_pergunta') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         if (configRecrutamento.perguntas.length >= 20) {
-          return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', ephemeral: true });
+          return interaction.reply({ content: '❌ Limite de 20 perguntas atingido!', flags: MessageFlags.Ephemeral });
         }
 
         const modal = new ModalBuilder().setCustomId('modal_add_pergunta').setTitle('Nova pergunta');
@@ -939,10 +1011,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'btn_rem_pergunta') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         if (configRecrutamento.perguntas.length === 0) {
-          return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada.', ephemeral: true });
+          return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada.', flags: MessageFlags.Ephemeral });
         }
         configRecrutamento.perguntas.pop();
         await sincronizarPainelRecrutamento(interaction.guild);
@@ -950,10 +1022,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'btn_rem_pergunta_especifica') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         if (configRecrutamento.perguntas.length === 0) {
-          return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', ephemeral: true });
+          return interaction.reply({ content: '❌ Nenhuma pergunta cadastrada para remover.', flags: MessageFlags.Ephemeral });
         }
 
         const options = configRecrutamento.perguntas.map((p, index) => ({
@@ -1001,7 +1073,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!isDonoOuAdmin(interaction) && !hasCargoRecrutador) {
           return interaction.reply({
             content: '❌ **Acesso negado!** Apenas o Dono, Administradores ou membros com o cargo de Recrutador podem aprovar/reprovar.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
           });
         }
 
@@ -1093,50 +1165,63 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       // REGISTRO
       if (customId === 'abrir_config_registro') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         const payload = gerarPayloadConfigRegistroV2();
-        payload.ephemeral = true;
+        payload.flags = MessageFlags.Ephemeral;
         return interaction.reply(payload);
       }
 
-      if (customId === 'abrir_modal_registro_seguro') {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_registro_submit_estavel')
-          .setTitle('📋 Formulário de Registro');
+      // ABERTURA DE TICKET DE REGISTRO
+      if (customId === 'iniciar_ticket_registro') {
+        const guild = interaction.guild;
+        const user = interaction.user;
 
-        const inputNome = new TextInputBuilder()
-          .setCustomId('reg_nome')
-          .setLabel('Nome do Personagem')
-          .setPlaceholder('Digite apenas o primeiro nome')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
+        const canalNome = `registro-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
-        const inputId = new TextInputBuilder()
-          .setCustomId('reg_id')
-          .setLabel('ID / Passaporte')
-          .setPlaceholder('Digite seu ID')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
+        try {
+          const permissionOverwrites = [
+            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.AttachFiles] }
+          ];
 
-        const inputTurno = new TextInputBuilder()
-          .setCustomId('reg_turno')
-          .setLabel('Turno de Atuação')
-          .setPlaceholder('Ex: Manhã / Tarde / Noite / Madrugada')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true);
+          if (configRegistro.cargoResponsavel) {
+            permissionOverwrites.push({ id: configRegistro.cargoResponsavel, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] });
+          }
 
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(inputNome),
-          new ActionRowBuilder().addComponents(inputId),
-          new ActionRowBuilder().addComponents(inputTurno)
-        );
+          const canalParams = {
+            name: canalNome,
+            type: ChannelType.GuildText,
+            permissionOverwrites
+          };
 
-        return interaction.showModal(modal);
+          if (configRegistro.categoriaId) {
+            canalParams.parent = configRegistro.categoriaId;
+          }
+
+          const canalTicket = await guild.channels.create(canalParams);
+
+          sessoesRegistroTicket.set(canalTicket.id, {
+            userId: user.id,
+            step: 1,
+            nome: '',
+            id: '',
+            turno: '',
+            fotoUrl: ''
+          });
+
+          await canalTicket.send(`👋 Olá ${user}! Bem-vindo ao seu **Ticket de Registro**.\nResponda às perguntas enviadas abaixo no chat para concluir seu registro.`);
+          await processarPassoRegistroTicket(canalTicket, interaction.member);
+
+          return interaction.reply({ content: `✅ Canal de registro criado: ${canalTicket}`, flags: MessageFlags.Ephemeral });
+        } catch (err) {
+          console.error(err);
+          return interaction.reply({ content: '❌ Erro ao criar o canal de registro.', flags: MessageFlags.Ephemeral });
+        }
       }
 
       if (customId === 'btn_configurar_tag_nome') {
-        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
         const modal = new ModalBuilder()
           .setCustomId('modal_config_tag_nome')
@@ -1160,7 +1245,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const customId = interaction.customId;
 
       if (!isDonoOuAdmin(interaction)) {
-        return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
+        return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
       }
 
       if (customId === 'select_remover_pergunta_especifica') {
@@ -1196,6 +1281,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
+      if (customId === 'select_categoria_registro') configRegistro.categoriaId = interaction.values[0];
       if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
       if (customId === 'select_cargos_atribuir') configRegistro.cargosAtribuir = interaction.values;
       if (customId === 'select_cargos_remover_reg') configRegistro.cargosRemover = interaction.values;
@@ -1206,7 +1292,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadDefinirConfigRecrutamentoV2());
       }
 
-      if (['select_log_registro', 'select_cargos_atribuir', 'select_cargos_remover_reg', 'select_responsavel_reg'].includes(customId)) {
+      if (['select_categoria_registro', 'select_log_registro', 'select_cargos_atribuir', 'select_cargos_remover_reg', 'select_responsavel_reg'].includes(customId)) {
         await sincronizarPainelRegistro(interaction.guild);
         return interaction.update(gerarPayloadConfigRegistroV2());
       }
@@ -1224,7 +1310,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         configRecrutamento.painelBannerUrl = bannerInput.trim().startsWith('http') ? bannerInput.trim() : null;
 
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.reply({ content: '✅ Título, Descrição e Banner do Recrutamento atualizados!', ephemeral: true });
+        return interaction.reply({ content: '✅ Título, Descrição e Banner do Recrutamento atualizados!', flags: MessageFlags.Ephemeral });
       }
 
       if (customId === 'modal_editar_banner_aprovacao') {
@@ -1234,7 +1320,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.reply({ content: '✅ Banner de aprovação atualizado!', ephemeral: true });
+        return interaction.reply({ content: '✅ Banner de aprovação atualizado!', flags: MessageFlags.Ephemeral });
       }
 
       if (customId === 'modal_add_pergunta') {
@@ -1242,7 +1328,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         configRecrutamento.perguntas.push(novaPergunta);
 
         await sincronizarPainelRecrutamento(interaction.guild);
-        return interaction.reply({ content: '✅ Pergunta adicionada!', ephemeral: true });
+        return interaction.reply({ content: '✅ Pergunta adicionada!', flags: MessageFlags.Ephemeral });
       }
 
       if (customId === 'modal_iniciar_recrutamento') {
@@ -1289,10 +1375,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
           iniciarTimerPergunta(canalTicket.id, canalTicket, user);
 
-          return interaction.reply({ content: `✅ Canal criado com sucesso: ${canalTicket}`, ephemeral: true });
+          return interaction.reply({ content: `✅ Canal criado com sucesso: ${canalTicket}`, flags: MessageFlags.Ephemeral });
         } catch (err) {
           console.error(err);
-          return interaction.reply({ content: '❌ Não foi possível criar o canal de recrutamento.', ephemeral: true });
+          return interaction.reply({ content: '❌ Não foi possível criar o canal de recrutamento.', flags: MessageFlags.Ephemeral });
         }
       }
 
@@ -1300,25 +1386,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         configRegistro.tagNome = interaction.fields.getTextInputValue('input_tag_prefixo').trim();
         await sincronizarPainelRegistro(interaction.guild);
         return interaction.update(gerarPayloadConfigRegistroV2());
-      }
-
-      // SUBMISSÃO DO REGISTRO SEM ERROS
-      if (customId === 'modal_registro_submit_estavel') {
-        const nomePersonagem = interaction.fields.getTextInputValue('reg_nome');
-        const idPassaporte = interaction.fields.getTextInputValue('reg_id');
-        const turno = interaction.fields.getTextInputValue('reg_turno');
-
-        sessoesRegistro.set(interaction.user.id, {
-          nome: nomePersonagem,
-          id: idPassaporte,
-          turno: turno,
-          aguardandoFoto: true
-        });
-
-        return interaction.reply({
-          content: '📸 **Quase lá!** Envie a **foto do seu personagem/RG** diretamente como uma mensagem de imagem neste chat para finalizar:',
-          ephemeral: true
-        });
       }
     }
   } catch (err) {
@@ -1363,52 +1430,41 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
-  // PROCESSAMENTO DA FOTO DE REGISTRO
-  const sessaoRegistro = sessoesRegistro.get(message.author.id);
-  if (sessaoRegistro && sessaoRegistro.aguardandoFoto) {
-    const anexo = message.attachments.first();
-    if (!anexo || !anexo.contentType?.startsWith('image/')) {
-      await message.reply('❌ Por favor, envie uma **imagem válida** (PNG, JPG, WEBP).');
+  // PROCESSAMENTO DO TICKET DE REGISTRO
+  const sessaoRegistroTicket = sessoesRegistroTicket.get(message.channel.id);
+  if (sessaoRegistroTicket && message.author.id === sessaoRegistroTicket.userId) {
+    if (sessaoRegistroTicket.step === 1) {
+      sessaoRegistroTicket.nome = message.content.trim();
+      sessaoRegistroTicket.step = 2;
+      await processarPassoRegistroTicket(message.channel, message.member);
       return;
     }
 
-    const member = message.member;
-    const nomeFormatado = `${sessaoRegistro.nome} \vert{} ID:${sessaoRegistro.id}`;
-    let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
-
-    let nickSucesso = true;
-    if (novoNick.length <= 32) {
-      await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
+    if (sessaoRegistroTicket.step === 2) {
+      sessaoRegistroTicket.id = message.content.trim();
+      sessaoRegistroTicket.step = 3;
+      await processarPassoRegistroTicket(message.channel, message.member);
+      return;
     }
 
-    if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
-    if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
+    if (sessaoRegistroTicket.step === 3) {
+      sessaoRegistroTicket.turno = message.content.trim();
+      sessaoRegistroTicket.step = 4;
+      await processarPassoRegistroTicket(message.channel, message.member);
+      return;
+    }
 
-    if (configRegistro.logChannelId) {
-      const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
-      if (canalLog) {
-        const embedLog = new EmbedBuilder()
-          .setTitle('📝 Novo Registro Efetuado')
-          .setColor(0x2ecc71)
-          .addFields(
-            { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
-            { name: '🆔 Personagem / ID', value: `\`${sessaoRegistro.nome}\` | \`${sessaoRegistro.id}\``, inline: true },
-            { name: '⏱️ Turno', value: `\`${sessaoRegistro.turno}\``, inline: true },
-            { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
-          )
-          .setImage(anexo.url)
-          .setTimestamp();
-
-        await canalLog.send({ embeds: [embedLog] });
+    if (sessaoRegistroTicket.step === 4) {
+      const anexo = message.attachments.first();
+      if (!anexo || !anexo.contentType?.startsWith('image/')) {
+        await message.reply('❌ Por favor, envie uma **imagem válida** (PNG, JPG, WEBP) para seu RG.');
+        return;
       }
+
+      sessaoRegistroTicket.fotoUrl = anexo.url;
+      sessaoRegistroTicket.step = 5;
+      await processarPassoRegistroTicket(message.channel, message.member);
     }
-
-    sessoesRegistro.delete(message.author.id);
-    await message.delete().catch(() => null);
-
-    await message.channel.send({
-      content: `🎉 **Registro concluído com sucesso, ${member}!**`
-    }).then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
   }
 });
 
