@@ -51,7 +51,7 @@ client.on('error', (err) => {
 // CACHES E CONFIGURAÇÕES DO SISTEMA
 // ==========================================
 
-// Configurações do Recrutamento (INTACTO)
+// Configurações do Recrutamento
 const configRecrutamento = {
   categoriaId: null,
   relatorioChannelId: null,
@@ -72,7 +72,7 @@ const configRecrutamento = {
   painelMessageId: null
 };
 
-// Configurações do Registro (COM CARGO RESPONSÁVEL E TAG AUTOMÁTICA)
+// Configurações do Registro
 const configRegistro = {
   categoriaId: null,
   logChannelId: null,
@@ -99,7 +99,7 @@ function isDonoOuAdmin(interaction) {
 }
 
 // ==========================================
-// MÓDULO 1: RECRUTAMENTO (CONTAINERS V2 - INTACTO)
+// MÓDULO 1: RECRUTAMENTO (CONTAINERS V2)
 // ==========================================
 
 function gerarPayloadPainelRecrutamentoV2(guild) {
@@ -462,6 +462,30 @@ async function sincronizarPainelRecrutamento(guild) {
   }
 }
 
+// CHECAGEM DE FORMULÁRIO PENDENTE NO CANAL DE RELATÓRIOS
+async function temFormularioPendente(guild, userId) {
+  if (!configRecrutamento.relatorioChannelId) return false;
+
+  try {
+    const canalRelatorios = await guild.channels.fetch(configRecrutamento.relatorioChannelId).catch(() => null);
+    if (!canalRelatorios) return false;
+
+    const mensagens = await canalRelatorios.messages.fetch({ limit: 50 }).catch(() => null);
+    if (!mensagens) return false;
+
+    for (const [, msg] of mensagens) {
+      if (msg.author.id === client.user.id && msg.components.length > 0) {
+        const temBotaoAprovar = msg.components[0]?.components?.some(b => b.customId === `aprovar_${userId}`);
+        if (temBotaoAprovar) return true;
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao checar formulários pendentes:', err);
+  }
+  return false;
+}
+
+// AVANÇO DE PERGUNTAS DO RECRUTAMENTO COM EMBEDS
 async function avancarPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -473,7 +497,16 @@ async function avancarPergunta(channelId, channel, user) {
       return finalizarRecrutamento(channel, user, sessao);
     }
     sessao.step = 1;
-    await channel.send(`📋 **Pergunta 1/${configRecrutamento.perguntas.length}:**\n> ${configRecrutamento.perguntas[0]}\n\n⏱️ *Você tem ${configRecrutamento.tempoPerguntaTexto} para responder.*`);
+
+    const embedPergunta1 = new EmbedBuilder()
+      .setTitle(`📋 │ PERGUNTA 1/${configRecrutamento.perguntas.length}`)
+      .setDescription(
+        `> ${configRecrutamento.perguntas[0]}\n\n` +
+        `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*`
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedPergunta1] });
     iniciarTimerPergunta(channelId, channel, user);
     return;
   }
@@ -482,7 +515,15 @@ async function avancarPergunta(channelId, channel, user) {
     const proximaPergunta = configRecrutamento.perguntas[sessao.step];
     sessao.step += 1;
 
-    await channel.send(`📋 **Pergunta ${sessao.step}/${configRecrutamento.perguntas.length}:**\n> ${proximaPergunta}\n\n⏱️ *Você tem ${configRecrutamento.tempoPerguntaTexto} para responder.*`);
+    const embedProxima = new EmbedBuilder()
+      .setTitle(`📋 │ PERGUNTA ${sessao.step}/${configRecrutamento.perguntas.length}`)
+      .setDescription(
+        `> ${proximaPergunta}\n\n` +
+        `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder no chat.*`
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedProxima] });
     iniciarTimerPergunta(channelId, channel, user);
   } else {
     await finalizarRecrutamento(channel, user, sessao);
@@ -512,7 +553,13 @@ function iniciarTimerPergunta(channelId, channel, user) {
 
     await user.send({ embeds: [embedExpirado] }).catch(() => null);
 
-    await channel.send('⚠️ **Recrutamento expirado por inatividade!** Fechando o canal em 5 segundos...');
+    const embedAvisoExpirado = new EmbedBuilder()
+      .setTitle('⏰ │ RECRUTAMENTO EXPIRADO')
+      .setDescription('⚠️ **Sessão expirada por inatividade!** O canal será finalizado e apagado em 5 segundos...')
+      .setColor(0xe74c3c);
+
+    await channel.send({ embeds: [embedAvisoExpirado] });
+
     setTimeout(() => {
       channel.delete().catch(() => null);
     }, 5000);
@@ -526,7 +573,17 @@ async function finalizarRecrutamento(channel, user, sessao) {
   await enviarRelatorioRecrutamento(user, sessao);
   sessoesCandidatos.delete(channel.id);
 
-  await channel.send(`🎉 **Recrutamento concluído com sucesso, ${user}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
+  const embedFinal = new EmbedBuilder()
+    .setTitle('🎉 │ RECRUTAMENTO CONCLUÍDO')
+    .setDescription(
+      `Parabéns ${user}, formulário enviado para a gerência!\n\n` +
+      '───────────────────────\n' +
+      '🔒 *Este canal será finalizado e apagado em 5 segundos...*\n\n' +
+      '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+    )
+    .setColor(0x2ecc71);
+
+  await channel.send({ embeds: [embedFinal] });
 
   setTimeout(() => {
     channel.delete().catch(() => null);
@@ -571,9 +628,8 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   await canal.send({ content: textoMencao, embeds: [embed], components: [row] });
 }
 
-
 // ==========================================
-// MÓDULO 2: REGISTRO (PAINEL DE CONFIGURAÇÕES ATUALIZADO)
+// MÓDULO 2: REGISTRO
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -626,7 +682,6 @@ function gerarPayloadRegistroV2(guild) {
   };
 }
 
-// PAINEL DE CONFIGURAÇÕES DO REGISTRO (INCLUI CARGO RESPONSÁVEL)
 function gerarPayloadConfigRegistroV2() {
   const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
   const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
@@ -676,6 +731,14 @@ function gerarPayloadConfigRegistroV2() {
       .setMaxValues(5)
   );
 
+  const rowRemover = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_cargos_remover_reg')
+      .setPlaceholder('🗑️ Selecione cargo(s) a remover')
+      .setMinValues(0)
+      .setMaxValues(5)
+  );
+
   const rowBotoes = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('btn_configurar_tag_nome')
@@ -686,7 +749,7 @@ function gerarPayloadConfigRegistroV2() {
 
   return {
     embeds: [embed],
-    components: [rowCategoria, rowLog, rowResponsavel, rowAtribuir, rowBotoes]
+    components: [rowCategoria, rowLog, rowResponsavel, rowAtribuir, rowRemover, rowBotoes]
   };
 }
 
@@ -707,34 +770,78 @@ async function sincronizarPainelRegistro(guild) {
   }
 }
 
-// APLICAÇÃO AUTOMÁTICA DE TAG, APELIDO E CARGOS
 async function processarPassoRegistroTicket(channel, member) {
   const sessao = sessoesRegistroTicket.get(channel.id);
   if (!sessao) return;
 
   if (sessao.step === 1) {
-    await channel.send(`👤 **1. Qual é o NOME do seu personagem?**\n*(Digite apenas o primeiro nome no chat)*`);
+    const embedPasso1 = new EmbedBuilder()
+      .setTitle('👤 │ NOME DO PERSONAGEM')
+      .setDescription(
+        `Olá ${member}, responda com o **NOME** do seu personagem no chat.\n\n` +
+        `📌 **Exemplo:** \`João\`\n\n` +
+        '───────────────────────\n' +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedPasso1] });
+
   } else if (sessao.step === 2) {
-    await channel.send(`🆔 **2. Qual é o seu ID / Passaporte?**\n*(Digite o seu número de ID no chat)*`);
+    const embedPasso2 = new EmbedBuilder()
+      .setTitle('🆔 │ PASSAPORTE / ID')
+      .setDescription(
+        `Perfeito! Agora digite o seu **ID / Passaporte** no chat.\n\n` +
+        `📌 **Exemplo:** \`1234\`\n\n` +
+        '───────────────────────\n' +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedPasso2] });
+
   } else if (sessao.step === 3) {
-    await channel.send(`⏱️ **3. Qual é o seu Turno de Atuação?**\n*(Exemplo: Manhã, Tarde, Noite ou Madrugada)*`);
+    const embedPasso3 = new EmbedBuilder()
+      .setTitle('⏱️ │ TURNO DE ATUAÇÃO')
+      .setDescription(
+        `Informe qual o seu **Turno de Atuação** na cidade.\n\n` +
+        `📌 **Exemplo:** \`Manhã\`, \`Tarde\`, \`Noite\` ou \`Madrugada\`\n\n` +
+        '───────────────────────\n' +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedPasso3] });
+
   } else if (sessao.step === 4) {
-    await channel.send(`📸 **4. Envie a FOTO do seu RG / Personagem** em anexo no chat.`);
+    const embedPasso4 = new EmbedBuilder()
+      .setTitle('📸 │ FOTO DO RG')
+      .setDescription(
+        `Por fim, envie em anexo no chat a **FOTO do seu RG / Personagem**.\n\n` +
+        `📌 **Formatos aceitos:** PNG, JPG ou WEBP.\n\n` +
+        '───────────────────────\n' +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+      )
+      .setColor(0x3498db);
+
+    await channel.send({ embeds: [embedPasso4] });
+
   } else if (sessao.step === 5) {
-    // 1. ALTERAÇÃO AUTOMÁTICA DO APELIDO/TAG
-    const nomeFormatado = `${sessao.nome} \vert{} ID:${sessao.id}`;
-    let novoNick = configRegistro.tagNome ? `${configRegistro.tagNome}${nomeFormatado}` : nomeFormatado;
+    const nomeComId = `${sessao.nome} \vert{}${sessao.id}`;
+    let novoNick = configRegistro.tagNome 
+      ? `『 ${configRegistro.tagNome} 』 ${nomeComId}` 
+      : nomeComId;
 
     let nickSucesso = true;
     if (novoNick.length <= 32) {
       await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
+    } else {
+      await member.setNickname(nomeComId).catch(() => { nickSucesso = false; });
     }
 
-    // 2. ATRIBUIÇÃO AUTOMÁTICA DE CARGOS
     if (configRegistro.cargosAtribuir.length > 0) await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
     if (configRegistro.cargosRemover.length > 0) await member.roles.remove(configRegistro.cargosRemover).catch(() => null);
 
-    // 3. ENVIO DE LOG
     if (configRegistro.logChannelId) {
       const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
       if (canalLog) {
@@ -756,8 +863,27 @@ async function processarPassoRegistroTicket(channel, member) {
 
     sessoesRegistroTicket.delete(channel.id);
 
-    // 4. AUTO-FECHAMENTO
-    await channel.send(`🎉 **Registro concluído com sucesso, ${member}!**\n🔒 *Este canal será finalizado e apagado em 5 segundos...*`);
+    const dataAtual = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const embedConcluido = new EmbedBuilder()
+      .setTitle('✅ │ REGISTRO CONCLUÍDO')
+      .setDescription(
+        `Parabéns ${member}, seu registro foi **realizado com sucesso**!\n\n` +
+        `🏢 **Servidor:** ${channel.guild.name}\n` +
+        `🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n` +
+        `🏷️ **Apelido:** \`${novoNick}\`\n\n` +
+        '───────────────────────\n' +
+        '🔒 *Este canal privado será encerrado e apagado em 5 segundos...*\n\n' +
+        `📅 **Data:** ${dataAtual}\n\n` +
+        '🤖 Organizações • Roleplay | Desenvolvido por Cetus'
+      )
+      .setColor(0x2ecc71);
+
+    if (channel.guild.iconURL()) {
+      embedConcluido.setThumbnail(channel.guild.iconURL({ dynamic: true }));
+    }
+
+    await channel.send({ embeds: [embedConcluido] });
 
     setTimeout(() => {
       channel.delete().catch(() => null);
@@ -853,7 +979,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
       const customId = interaction.customId;
 
-      // RECRUTAMENTO (INTACTO)
       if (customId === 'abrir_config_painel' || customId === 'menu_navegacao_principal') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Acesso negado.', flags: MessageFlags.Ephemeral });
 
@@ -890,6 +1015,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (customId === 'iniciar_formulario') {
+        // CHECAGEM SE JÁ TEM FORMULÁRIO PENDENTE DE ANÁLISE
+        const pendente = await temFormularioPendente(interaction.guild, interaction.user.id);
+        if (pendente) {
+          return interaction.reply({
+            content: '⚠️ **Atenção!** Você já possui uma candidatura enviada **aguardando análise** da gerência. Por favor, aguarde o resultado antes de enviar outro formulário.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
         const modal = new ModalBuilder()
           .setCustomId('modal_iniciar_recrutamento')
           .setTitle('Iniciar Recrutamento');
@@ -1134,7 +1268,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // REGISTRO
       if (customId === 'abrir_config_registro') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', flags: MessageFlags.Ephemeral });
 
@@ -1143,7 +1276,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply(payload);
       }
 
-      // ABERTURA DE TICKET DE REGISTRO
       if (customId === 'iniciar_ticket_registro') {
         const guild = interaction.guild;
         const user = interaction.user;
@@ -1181,7 +1313,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             fotoUrl: ''
           });
 
-          await canalTicket.send(`👋 Olá ${user}! Bem-vindo ao seu **Ticket de Registro**.\nResponda às perguntas enviadas abaixo no chat para concluir seu registro.`);
           await processarPassoRegistroTicket(canalTicket, interaction.member);
 
           return interaction.reply({ content: `✅ Canal de registro criado: ${canalTicket}`, flags: MessageFlags.Ephemeral });
@@ -1201,7 +1332,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const inputTag = new TextInputBuilder()
           .setCustomId('input_tag_prefixo')
           .setLabel('TAG / Prefixo do Nome')
-          .setPlaceholder('Ex: [MEMBER]')
+          .setPlaceholder('Ex: MEMBER')
           .setValue(configRegistro.tagNome)
           .setStyle(TextInputStyle.Short)
           .setRequired(false);
@@ -1211,7 +1342,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // MENUS DE SELEÇÃO
     if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
       const customId = interaction.customId;
 
@@ -1228,7 +1358,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
-      // RECRUTAMENTO
       if (customId === 'select_categoria') configRecrutamento.categoriaId = interaction.values[0];
       if (customId === 'select_canal_relatorios') configRecrutamento.relatorioChannelId = interaction.values[0];
       if (customId === 'select_canal_anuncios') configRecrutamento.anunciosChannelId = interaction.values[0];
@@ -1253,7 +1382,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadGerenciarPerguntasRecrutamentoV2());
       }
 
-      // SELEÇÃO DO REGISTRO (INCLUI RESPONSÁVEL)
       if (customId === 'select_categoria_registro') configRegistro.categoriaId = interaction.values[0];
       if (customId === 'select_log_registro') configRegistro.logChannelId = interaction.values[0];
       if (customId === 'select_responsavel_reg') configRegistro.cargoResponsavel = interaction.values[0];
@@ -1271,7 +1399,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // SUBMISSÃO DE MODAIS
     if (interaction.isModalSubmit()) {
       const customId = interaction.customId;
 
@@ -1342,9 +1469,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
             timer: null
           });
 
-          await canalTicket.send({
-            content: `👋 Olá ${user}!\n\n🆔 **Candidato:** \`${nomeId}\`\n\n📌 **Envie a foto do seu RG abaixo para começar o recrutamento.**\n⏱️ *Você tem ${configRecrutamento.tempoPerguntaTexto} para responder.*`
-          });
+          const embedBoasVindas = new EmbedBuilder()
+            .setTitle('📋 │ FORMULÁRIO DE RECRUTAMENTO')
+            .setDescription(
+              `👋 Olá ${user}!\n\n` +
+              `🆔 **Candidato:** \`${nomeId}\`\n\n` +
+              `📸 **Envie a FOTO do seu RG** em anexo no chat para dar início às perguntas.\n\n` +
+              `⏱️ *Você tem **${configRecrutamento.tempoPerguntaTexto}** para responder.*`
+            )
+            .setColor(0x3498db);
+
+          await canalTicket.send({ embeds: [embedBoasVindas] });
 
           iniciarTimerPergunta(canalTicket.id, canalTicket, user);
 
@@ -1373,7 +1508,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // RECRUTAMENTO (INTACTO)
   const sessaoCandidato = sessoesCandidatos.get(message.channel.id);
   if (sessaoCandidato && message.author.id === sessaoCandidato.userId) {
     if (sessaoCandidato.timer) clearTimeout(sessaoCandidato.timer);
@@ -1381,7 +1515,12 @@ client.on(Events.MessageCreate, async (message) => {
     if (sessaoCandidato.step === 0) {
       const anexo = message.attachments.first();
       if (!anexo || !anexo.contentType?.startsWith('image/')) {
-        await message.reply('❌ Por favor, envie uma **imagem válida** do seu RG.');
+        const embedErroImage = new EmbedBuilder()
+          .setTitle('❌ │ IMAGEM INVÁLIDA')
+          .setDescription('Por favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.')
+          .setColor(0xe74c3c);
+
+        await message.reply({ embeds: [embedErroImage] });
         iniciarTimerPergunta(message.channel.id, message.channel, message.author);
         return;
       }
@@ -1403,7 +1542,6 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
-  // PROCESSAMENTO DO TICKET DE REGISTRO
   const sessaoRegistroTicket = sessoesRegistroTicket.get(message.channel.id);
   if (sessaoRegistroTicket && message.author.id === sessaoRegistroTicket.userId) {
     if (sessaoRegistroTicket.step === 1) {
@@ -1430,7 +1568,12 @@ client.on(Events.MessageCreate, async (message) => {
     if (sessaoRegistroTicket.step === 4) {
       const anexo = message.attachments.first();
       if (!anexo || !anexo.contentType?.startsWith('image/')) {
-        await message.reply('❌ Por favor, envie uma **imagem válida** (PNG, JPG, WEBP) para seu RG.');
+        const embedErroImage = new EmbedBuilder()
+          .setTitle('❌ │ IMAGEM INVÁLIDA')
+          .setDescription('Por favor, envie uma **imagem válida** (PNG, JPG ou WEBP) para a foto do seu RG.')
+          .setColor(0xe74c3c);
+
+        await message.reply({ embeds: [embedErroImage] });
         return;
       }
 
