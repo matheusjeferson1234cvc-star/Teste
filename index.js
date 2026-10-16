@@ -61,9 +61,9 @@ const configRecrutamento = {
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  tempoPerguntaMs: 30000, // Tempo por pergunta (ex: 30 segundos)
+  tempoPerguntaMs: 30000, // 30 segundos
   tempoPerguntaTexto: '30 segundos',
-  tempoGeralInatividadeMs: 600000, // Limite geral de inatividade total do ticket (10 minutos)
+  tempoGeralInatividadeMs: 600000, // 10 minutos
   perguntas: [],
   painelTitulo: '📋 │ Central de Recrutamento',
   painelDescricao: 'Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.',
@@ -113,10 +113,11 @@ function gerarPayloadPainelRecrutamentoV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRecrutamento.painelTitulo}\n\n` + `${configRecrutamento.painelDescricao}\n\n` +
+    `# ${configRecrutamento.painelTitulo}\n\n` +
+    `${configRecrutamento.painelDescricao}\n\n` +
     `### 🛡️ Etapas do Processo\n` +
     `• 📝 Preenchimento do formulário\n` +
-    `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** por pergunta (pula automaticamente caso não responda)\n` +
+    `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** por pergunta\n` +
     `• ⌛ Tempo total limite do formulário: **10 minutos**\n` +
     `• 🔍 Análise da candidatura\n` +
     `• ✅ Resultado final`;
@@ -208,9 +209,12 @@ function gerarPayloadMenuConfigRecrutamentoV2(guild) {
 }
 
 function gerarPayloadStatusConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida';
+  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   const textoConteudo = 
     `# ⚙️ Status Atual das Configurações\n\n` +
@@ -247,7 +251,8 @@ function gerarPayloadStatusConfigRecrutamentoV2() {
 }
 
 function gerarPayloadVisualTextosRecrutamentoV2() {
-  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado'; const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
+  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado';
+  const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
 
   const textoConteudo = 
     `# 🎨 Configurações de Visual & Textos\n\n` +
@@ -344,9 +349,12 @@ function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
 }
 
 function gerarPayloadDefinirConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido';
+  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
+  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
+  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   return {
     components: [
@@ -510,8 +518,8 @@ async function avancarPergunta(channelId, channel, user) {
   }
 
   if (sessao.step <= configRecrutamento.perguntas.length) {
-    const perguntaAtualIndex = sessao.step - 1;
-    const proximaPergunta = configRecrutamento.perguntas[perguntaAtualIndex];
+    const perguntaIndex = sessao.step - 1;
+    const proximaPergunta = configRecrutamento.perguntas[perguntaIndex];
 
     const payloadProx = {
       components: [{
@@ -531,7 +539,6 @@ async function avancarPergunta(channelId, channel, user) {
   }
 }
 
-// Timer individual de cada pergunta (pula de pergunta sem fechar o ticket)
 function iniciarTimerPergunta(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -540,13 +547,12 @@ function iniciarTimerPergunta(channelId, channel, user) {
     if (!sessoesCandidatos.has(channelId)) return;
 
     if (sessao.step === 0) {
-      // Foto do RG não enviada no tempo
       sessao.rgImageUrl = null;
       await channel.send({
         components: [{
           type: 17,
           accent_color: 0xe67e22,
-          components: [{ type: 10, content: `⚠️ **Tempo esgotado!** Foto do RG não enviada. Pulando para a próxima etapa...` }]
+          components: [{ type: 10, content: `⚠️ **Tempo esgotado!** Foto do RG não enviada. Pulando para as perguntas...` }]
         }],
         flags: FLAG_V2
       });
@@ -577,7 +583,6 @@ function iniciarTimerPergunta(channelId, channel, user) {
   }, configRecrutamento.tempoPerguntaMs);
 }
 
-// Timer de inatividade geral (limite máximo total do ticket)
 function iniciarTimerGeralInatividade(channelId, channel, user) {
   const sessao = sessoesCandidatos.get(channelId);
   if (!sessao) return;
@@ -634,7 +639,7 @@ async function finalizarRecrutamento(channel, user, sessao) {
       components: [
         {
           type: 10,
-          content: `# 🎉 │ RECRUTAMENTO CONCLUÍDO\n\nParabéns ${user}, formulário enviado para a gerência!\n\n───────────────────────\n🔒 *Este canal será finalizado e apagado em 5 segundos...*\n\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+          content: `# 🎉 │ RECRUTAMENTO CONCLUÍDO\n\nParabéns ${user}, seu formulário foi **enviado com sucesso** para a gerência!\n\n───────────────────────\n🔒 *Este canal privado será encerrado e apagado em 5 segundos...*\n\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
         }
       ]
     }],
@@ -686,7 +691,12 @@ async function enviarRelatorioRecrutamento(user, sessao) {
       type: 1,
       components: [
         { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
-        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' } ] } );  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
+        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' }
+      ]
+    }
+  );
+
+  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({
     content: textoMencao,
@@ -704,7 +714,8 @@ function gerarPayloadRegistroV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRegistro.painelTitulo}\n\n` + `${configRegistro.painelDescricao}\n\n` +
+    `# ${configRegistro.painelTitulo}\n\n` +
+    `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
     `• 📝 Clique em **Registre-se** abaixo.\n` +
     `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
@@ -750,8 +761,10 @@ function gerarPayloadRegistroV2(guild) {
 }
 
 function gerarPayloadConfigRegistroV2() {
-  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida'; const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
-  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido'; const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
+  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
+  const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
+  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
   const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não configurado';
@@ -1786,8 +1799,9 @@ client.on(Events.MessageCreate, async (message) => {
         resposta: message.content
       });
 
-      if (sessaoCandidato.step < configRecrutamento.perguntas.length) {
-        sessaoCandidato.step += 1;
+      sessaoCandidato.step += 1;
+
+      if (sessaoCandidato.step <= configRecrutamento.perguntas.length) {
         await avancarPergunta(message.channel.id, message.channel, message.author);
       } else {
         await finalizarRecrutamento(message.channel, message.author, sessaoCandidato);
