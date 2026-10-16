@@ -20,6 +20,7 @@ const {
   PermissionsBitField,
   MessageFlags
 } = require('discord.js');
+const { InteractionResponseType, ComponentType } = require('discord-api-types/v10');
 require('dotenv').config();
 
 // ==========================================
@@ -571,7 +572,7 @@ async function enviarRelatorioRecrutamento(user, sessao) {
 
 
 // ==========================================
-// MÓDULO 2: REGISTRO (FORMULÁRIO V2 IDÊNTICO À IMAGEM)
+// MÓDULO 2: REGISTRO (FORMULÁRIO V2 VIA REST API)
 // ==========================================
 
 function gerarPayloadRegistroV2(guild) {
@@ -581,10 +582,10 @@ function gerarPayloadRegistroV2(guild) {
     `# ${configRegistro.painelTitulo}\n\n` +
     `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
-    `• 📝 Preencha o formulário interativo de registro[span_3](start_span)[span_3](end_span).\n` +
-    `• 👤 Informe seus dados, selecione seu turno e faça upload do RG[span_4](start_span)[span_4](end_span).\n` +
+    `• 📝 Preencha o formulário oficial de registro.\n` +
+    `• 👤 Informe Nome, ID, selecione seu turno e envie o RG numa tela só.\n` +
     `• 🏷️ Seu nome e cargos serão configurados automaticamente.\n` +
-    `• ✅ Processamento instantâneo.`;
+    `• ✅ Registro concluído de forma instantânea.`;
 
   const containerComponents = [];
 
@@ -610,7 +611,7 @@ function gerarPayloadRegistroV2(guild) {
     {
       type: 1,
       components: [
-        { type: 2, style: 2, custom_id: 'abrir_modal_v2_imagem_exata', label: 'Registre-se', emoji: { name: '📝' } },
+        { type: 2, style: 2, custom_id: 'abrir_modal_v2_rest', label: 'Registre-se', emoji: { name: '📝' } },
         { type: 2, style: 2, custom_id: 'abrir_config_registro', emoji: { name: '⚙️' } }
       ]
     },
@@ -702,72 +703,6 @@ function gerarPayloadConfigRegistroV2() {
       }
     ],
     flags: MessageFlags.IsComponentsV2
-  };
-}
-
-// ESTRUTURA RAW DO MODAL V2 IDENTICA À DA IMAGEM[span_5](start_span)[span_5](end_span)
-function gerarPayloadModalFormularioV2Raw() {
-  return {
-    type: 9,
-    title: '📋 Formulário de Registro',
-    custom_id: 'submit_registro_v2_raw',
-    components: [
-      {
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'v2_reg_nome',
-            label: 'Nome do Personagem',
-            style: 1,
-            placeholder: 'Digite apenas o primeiro nome',
-            required: true
-          }
-        ]
-      },
-      {
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'v2_reg_id',
-            label: 'ID / Passaporte',
-            style: 1,
-            placeholder: 'Digite seu ID',
-            required: true
-          }
-        ]
-      },
-      {
-        type: 1,
-        components: [
-          {
-            type: 3,
-            custom_id: 'v2_reg_turno',
-            placeholder: 'Selecione seu turno',
-            options: [
-              { label: 'Manhã', value: 'Manhã', description: 'Turno da manhã', emoji: { name: '🌅' } },
-              { label: 'Tarde', value: 'Tarde', description: 'Turno da tarde', emoji: { name: '☀️' } },
-              { label: 'Noite', value: 'Noite', description: 'Turno da noite', emoji: { name: '🌙' } },
-              { label: 'Madrugada', value: 'Madrugada', description: 'Turno da madrugada', emoji: { name: '🌃' } }
-            ]
-          }
-        ]
-      },
-      {
-        type: 1,
-        components: [
-          {
-            type: 13,
-            custom_id: 'v2_reg_foto',
-            label: 'Foto do Personagem (Opcional)',
-            description: 'Envie uma imagem PNG, JPG, GIF ou WEBP.',
-            required: true,
-            max_files: 1
-          }
-        ]
-      }
-    ]
   };
 }
 
@@ -1157,7 +1092,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // REGISTRO
+      // REGISTRO - ABERTURA VIA REST API v10
       if (customId === 'abrir_config_registro') {
         if (!isDonoOuAdmin(interaction)) return interaction.reply({ content: '❌ Permissão insuficiente.', ephemeral: true });
 
@@ -1166,13 +1101,73 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply(payload);
       }
 
-      // EXIBE O FORMULÁRIO RAW V2 IGUAL À SUA IMAGEM[span_6](start_span)[span_6](end_span)
-      if (customId === 'abrir_modal_v2_imagem_exata') {
+      if (customId === 'abrir_modal_v2_rest') {
         const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN.trim());
+
         await rest.post(Routes.interactionCallback(interaction.id, interaction.token), {
           body: {
-            type: 9,
-            data: gerarPayloadModalFormularioV2Raw()
+            type: InteractionResponseType.Modal,
+            data: {
+              title: '📋 Formulário de Registro',
+              custom_id: 'submit_registro_v2_final',
+              components: [
+                {
+                  type: ComponentType.ActionRow,
+                  components: [
+                    {
+                      type: ComponentType.TextInput,
+                      custom_id: 'v2_reg_nome',
+                      label: 'Nome do Personagem',
+                      style: 1,
+                      placeholder: 'Digite apenas o primeiro nome',
+                      required: true
+                    }
+                  ]
+                },
+                {
+                  type: ComponentType.ActionRow,
+                  components: [
+                    {
+                      type: ComponentType.TextInput,
+                      custom_id: 'v2_reg_id',
+                      label: 'ID / Passaporte',
+                      style: 1,
+                      placeholder: 'Digite seu ID',
+                      required: true
+                    }
+                  ]
+                },
+                {
+                  type: ComponentType.ActionRow,
+                  components: [
+                    {
+                      type: ComponentType.StringSelect,
+                      custom_id: 'v2_reg_turno',
+                      placeholder: 'Selecione seu turno',
+                      options: [
+                        { label: 'Manhã', value: 'Manhã', description: 'Turno da manhã', emoji: { name: '🌅' } },
+                        { label: 'Tarde', value: 'Tarde', description: 'Turno da tarde', emoji: { name: '☀️' } },
+                        { label: 'Noite', value: 'Noite', description: 'Turno da noite', emoji: { name: '🌙' } },
+                        { label: 'Madrugada', value: 'Madrugada', description: 'Turno da madrugada', emoji: { name: '🌃' } }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: ComponentType.ActionRow,
+                  components: [
+                    {
+                      type: 13,
+                      custom_id: 'v2_reg_foto',
+                      label: 'Foto do Personagem (Opcional)',
+                      description: 'Envie uma imagem PNG, JPG, GIF ou WEBP.',
+                      required: false,
+                      max_files: 1
+                    }
+                  ]
+                }
+              ]
+            }
           }
         });
         return;
@@ -1255,8 +1250,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    // SUBMISSÃO DO FORMULÁRIO RAW E OUTROS MODAIS
-    if (interaction.isModalSubmit() || interaction.customId === 'submit_registro_v2_raw') {
+    // SUBMISSÃO DE MODAIS
+    if (interaction.isModalSubmit() || interaction.customId === 'submit_registro_v2_final') {
       const customId = interaction.customId;
 
       if (customId === 'modal_editar_painel') {
@@ -1345,14 +1340,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.update(gerarPayloadConfigRegistroV2());
       }
 
-      // SUBMISSÃO DO MODAL V2 IDENTICO Á IMAGEM[span_7](start_span)[span_7](end_span)
-      if (customId === 'submit_registro_v2_raw') {
+      // SUBMISSÃO DO FORMULÁRIO DE REGISTRO
+      if (customId === 'submit_registro_v2_final') {
         await interaction.deferReply({ ephemeral: true });
 
         const nomePersonagem = interaction.fields.getTextInputValue('v2_reg_nome');
         const idPassaporte = interaction.fields.getTextInputValue('v2_reg_id');
         const turno = interaction.fields.getTextInputValue('v2_reg_turno') || 'Não informado';
-        const anexoFoto = interaction.fields.getAttachment ? interaction.fields.getAttachment('v2_reg_foto') : null;
+        
+        let anexoFotoUrl = null;
+        if (interaction.fields.getAttachment) {
+          const anexoObj = interaction.fields.getAttachment('v2_reg_foto');
+          if (anexoObj) anexoFotoUrl = anexoObj.url;
+        }
 
         const member = interaction.member;
         const nomeFormatado = `${nomePersonagem} \vert{} ID:${idPassaporte}`;
@@ -1376,12 +1376,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 { name: '👤 Membro', value: `${member} (\`${member.id}\`)`, inline: true },
                 { name: '🆔 Personagem / ID', value: `\`${nomePersonagem}\` | \`${idPassaporte}\``, inline: true },
                 { name: '⏱️ Turno', value: `\`${turno}\``, inline: true },
-                { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ apelido', inline: false }
+                { name: '🏷️ Apelido Aplicado', value: nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido', inline: false }
               )
               .setTimestamp();
 
-            if (anexoFoto && anexoFoto.url) {
-              embedLog.setImage(anexoFoto.url);
+            if (anexoFotoUrl) {
+              embedLog.setImage(anexoFotoUrl);
             }
 
             await canalLog.send({ embeds: [embedLog] });
