@@ -61,8 +61,8 @@ const configRecrutamento = {
   cargosAprovar: [],
   cargosRemover: [],
   cargoRecrutador: null,
-  tempoPerguntaMs: 30000, // 30 segundos
-  tempoPerguntaTexto: '30 segundos',
+  tempoPerguntaMs: 60000, // 1 minuto
+  tempoPerguntaTexto: '1 minuto',
   tempoGeralInatividadeMs: 600000, // 10 minutos
   perguntas: [],
   painelTitulo: '📋 │ Central de Recrutamento',
@@ -578,7 +578,11 @@ function iniciarTimerPergunta(channelId, channel, user) {
       });
 
       sessao.step += 1;
-      await avancarPergunta(channelId, channel, user);
+      if (sessao.step <= configRecrutamento.perguntas.length) {
+        await avancarPergunta(channelId, channel, user);
+      } else {
+        await finalizarRecrutamento(channel, user, sessao);
+      }
     }
   }, configRecrutamento.tempoPerguntaMs);
 }
@@ -629,7 +633,13 @@ async function finalizarRecrutamento(channel, user, sessao) {
   if (sessao.timerPergunta) clearTimeout(sessao.timerPergunta);
   if (sessao.timerGeral) clearTimeout(sessao.timerGeral);
 
-  await enviarRelatorioRecrutamento(user, sessao);
+  // Garante o envio do relatório mesmo com proteção anti-crash
+  try {
+    await enviarRelatorioRecrutamento(user, sessao);
+  } catch (e) {
+    console.error("Erro ao enviar relatório de recrutamento:", e);
+  }
+
   sessoesCandidatos.delete(channel.id);
 
   const payloadFinal = {
@@ -646,7 +656,7 @@ async function finalizarRecrutamento(channel, user, sessao) {
     flags: FLAG_V2
   };
 
-  await channel.send(payloadFinal);
+  await channel.send(payloadFinal).catch(() => null);
 
   setTimeout(() => {
     channel.delete().catch(() => null);
@@ -671,14 +681,19 @@ async function enviarRelatorioRecrutamento(user, sessao) {
   ];
 
   if (sessao.rgImageUrl) {
-    const anexoFoto = new AttachmentBuilder(sessao.rgImageUrl, { name: 'recrutamento_rg.png' });
-    files.push(anexoFoto);
+    try {
+      const anexoFoto = new AttachmentBuilder(sessao.rgImageUrl, { name: 'recrutamento_rg.png' });
+      files.push(anexoFoto);
 
-    containerComponents.push({
-      type: 12,
-      items: [{ media: { url: 'attachment://recrutamento_rg.png' } }]
-    });
-    containerComponents.push({ type: 14, divider: true, spacing: 1 });
+      containerComponents.push({
+        type: 12,
+        items: [{ media: { url: 'attachment://recrutamento_rg.png' } }]
+      });
+      containerComponents.push({ type: 14, divider: true, spacing: 1 });
+    } catch (e) {
+      containerComponents.push({ type: 10, content: `📸 **Foto do RG:** ⚠️ *Erro ao anexar imagem*` });
+      containerComponents.push({ type: 14, divider: true, spacing: 1 });
+    }
   } else {
     containerComponents.push({ type: 10, content: `📸 **Foto do RG:** ❌ *Não enviada / Tempo esgotado*` });
     containerComponents.push({ type: 14, divider: true, spacing: 1 });
@@ -1799,9 +1814,8 @@ client.on(Events.MessageCreate, async (message) => {
         resposta: message.content
       });
 
-      sessaoCandidato.step += 1;
-
-      if (sessaoCandidato.step <= configRecrutamento.perguntas.length) {
+      if (sessaoCandidato.step < configRecrutamento.perguntas.length) {
+        sessaoCandidato.step += 1;
         await avancarPergunta(message.channel.id, message.channel, message.author);
       } else {
         await finalizarRecrutamento(message.channel, message.author, sessaoCandidato);
