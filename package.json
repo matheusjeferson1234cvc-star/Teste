@@ -1,13 +1,18 @@
 {
   "name": "bot-recrutamento-teste",
   "version": "1.0.0",
-  "description": "Bot de recrutamento teste",
+  "description": "Bot de recrutamento e registro com V2 Forms",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "@discordjs/rest": "^2.3.0",
+    "discord-api-types": "^0.37.70",
+    "discord.js": "^14.18.0",
     "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
