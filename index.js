@@ -17,7 +17,8 @@ const {
   Routes,
   SlashCommandBuilder,
   PermissionsBitField,
-  MessageFlags
+  MessageFlags,
+  AttachmentBuilder
 } = require('discord.js');
 require('dotenv').config();
 
@@ -111,8 +112,7 @@ function gerarPayloadPainelRecrutamentoV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRecrutamento.painelTitulo}\n\n` +
-    `${configRecrutamento.painelDescricao}\n\n` +
+    `# ${configRecrutamento.painelTitulo}\n\n` + `${configRecrutamento.painelDescricao}\n\n` +
     `### 🛡️ Etapas do Processo\n` +
     `• 📝 Preenchimento do formulário\n` +
     `• ⏱️ Você terá **${configRecrutamento.tempoPerguntaTexto}** para responder cada pergunta\n` +
@@ -207,12 +207,9 @@ function gerarPayloadMenuConfigRecrutamentoV2(guild) {
 }
 
 function gerarPayloadStatusConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida';
-  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
-  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
-  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definida'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   const textoConteudo = 
     `# ⚙️ Status Atual das Configurações\n\n` +
@@ -249,8 +246,7 @@ function gerarPayloadStatusConfigRecrutamentoV2() {
 }
 
 function gerarPayloadVisualTextosRecrutamentoV2() {
-  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado';
-  const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
+  const bannerInfo = configRecrutamento.painelBannerUrl ? `[Clique aqui para ver](${configRecrutamento.painelBannerUrl})` : '❌ Não configurado'; const bannerAprovInfo = configRecrutamento.bannerAprovadoUrl ? `[Clique aqui para ver](${configRecrutamento.bannerAprovadoUrl})` : '❌ Não configurado';
 
   const textoConteudo = 
     `# 🎨 Configurações de Visual & Textos\n\n` +
@@ -348,12 +344,9 @@ function gerarPayloadGerenciarPerguntasRecrutamentoV2() {
 }
 
 function gerarPayloadDefinirConfigRecrutamentoV2() {
-  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido';
-  const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
-  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido';
-  const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado';
-  const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
+  const catTexto = configRecrutamento.categoriaId ? `<#${configRecrutamento.categoriaId}>` : '❌ Não definido'; const relTexto = configRecrutamento.relatorioChannelId ? `<#${configRecrutamento.relatorioChannelId}>` : '❌ Não definido';
+  const anuTexto = configRecrutamento.anunciosChannelId ? `<#${configRecrutamento.anunciosChannelId}>` : '❌ Não definido'; const aprTexto = configRecrutamento.cargosAprovar.length ? configRecrutamento.cargosAprovar.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
+  const remTexto = configRecrutamento.cargosRemover.length ? configRecrutamento.cargosRemover.map(c => `<@&${c}>`).join(', ') : '❌ Nenhum cargo configurado'; const recTexto = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '❌ Não definido';
 
   return {
     components: [
@@ -621,35 +614,14 @@ async function enviarRelatorioRecrutamento(user, sessao) {
     textoRespostas += `**❓ P${idx + 1}: ${r.pergunta}**\n>${r.resposta || '*Sem resposta*'}\n\n`;
   });
 
+  const files = [];
   const containerComponents = [
-    { type: 10, content: `# 📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}\n\n👤 **Candidato:** ${user} (\`${user.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nomeIdPersonagem}\`` },
-    { type: 14, divider: true, spacing: 1 }
-  ];
-
-  if (sessao.rgImageUrl) {
-    containerComponents.push({
-      type: 12,
-      items: [{ media: { url: sessao.rgImageUrl } }]
-    });
-    containerComponents.push({ type: 14, divider: true, spacing: 1 });
-  }
-
-  containerComponents.push(
-    { type: 10, content: textoRespostas },
-    { type: 14, divider: true, spacing: 1 },
-    {
-      type: 1,
-      components: [
-        { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
-        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' }
-      ]
-    }
-  );
-
-  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
+    { type: 10, content: `# 📋 Relatório de Recrutamento - ${sessao.nomeIdPersonagem}\n\n👤 **Candidato:** ${user} (\`${user.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nomeIdPersonagem}\`` }, { type: 14, divider: true, spacing: 1 } ];  if (sessao.rgImageUrl) { const anexoFoto = new AttachmentBuilder(sessao.rgImageUrl, { name: 'recrutamento_rg.png' }); files.push(anexoFoto);  containerComponents.push({ type: 12, items: [{ media: { url: 'attachment://recrutamento_rg.png' } }] }); containerComponents.push({ type: 14, divider: true, spacing: 1 }); }  containerComponents.push( { type: 10, content: textoRespostas }, { type: 14, divider: true, spacing: 1 }, { type: 1, components: [ { type: 2, style: 3, custom_id: `aprovar_${user.id}`, label: 'Aprovar' },
+        { type: 2, style: 4, custom_id: `reprovar_${user.id}`, label: 'Reprovar' } ] } );  const textoMencao = configRecrutamento.cargoRecrutador ? `<@&${configRecrutamento.cargoRecrutador}>` : '🔔 **Novo relatório recebido!**';
 
   await canal.send({
     content: textoMencao,
+    files,
     components: [{ type: 17, accent_color: configRecrutamento.painelCorHex, components: containerComponents }],
     flags: FLAG_V2
   });
@@ -663,8 +635,7 @@ function gerarPayloadRegistroV2(guild) {
   const logoUrl = guild && guild.iconURL({ extension: 'png', size: 256 }) ? guild.iconURL({ extension: 'png', size: 256 }) : null;
 
   const textoConteudo = 
-    `# ${configRegistro.painelTitulo}\n\n` +
-    `${configRegistro.painelDescricao}\n\n` +
+    `# ${configRegistro.painelTitulo}\n\n` + `${configRegistro.painelDescricao}\n\n` +
     `### ❓ Como funciona?\n` +
     `• 📝 Clique em **Registre-se** abaixo.\n` +
     `• 📁 Um ticket privado será aberto exclusivamente para você.\n` +
@@ -710,10 +681,8 @@ function gerarPayloadRegistroV2(guild) {
 }
 
 function gerarPayloadConfigRegistroV2() {
-  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida';
-  const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
-  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido';
-  const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
+  const catTexto = configRegistro.categoriaId ? `<#${configRegistro.categoriaId}>` : '❌ Não definida'; const logTexto = configRegistro.logChannelId ? `<#${configRegistro.logChannelId}>` : '❌ Não definido';
+  const atrTexto = configRegistro.cargosAtribuir.length ? configRegistro.cargosAtribuir.map(c => `<@&${c}>`).join(', ') : '❌ Não definido'; const resTexto = configRegistro.cargoResponsavel ? `<@&${configRegistro.cargoResponsavel}>` : '❌ Não definido';
   const tagTexto = configRegistro.tagNome ? `\`${configRegistro.tagNome}\`` : '❌ Nenhuma TAG configurada';
 
   const tManha = configRegistro.cargosTurnos.manha ? `<@&${configRegistro.cargosTurnos.manha}>` : '❌ Não configurado';
@@ -973,18 +942,22 @@ async function processarPassoRegistroTicket(channel, member) {
       : nomeComId;
 
     let nickSucesso = true;
-    if (novoNick.length <= 32) {
-      await member.setNickname(novoNick).catch(() => { nickSucesso = false; });
-    } else {
-      await member.setNickname(nomeComId).catch(() => { nickSucesso = false; });
+
+    try {
+      if (novoNick.length <= 32) {
+        await member.setNickname(novoNick);
+      } else {
+        await member.setNickname(nomeComId);
+      }
+    } catch (err) {
+      console.error(`Não foi possível alterar o apelido de ${member.user.tag}:`, err.message);
+      nickSucesso = false;
     }
 
-    // Atribuição dos cargos padrões do registro
     if (configRegistro.cargosAtribuir.length > 0) {
       await member.roles.add(configRegistro.cargosAtribuir).catch(() => null);
     }
 
-    // Atribuição do cargo de turno correspondente
     const turnoLower = sessao.turno.toLowerCase();
     let cargoTurnoId = null;
 
@@ -1005,21 +978,31 @@ async function processarPassoRegistroTicket(channel, member) {
     if (configRegistro.logChannelId) {
       const canalLog = await client.channels.fetch(configRegistro.logChannelId).catch(() => null);
       if (canalLog) {
+        const files = [];
+        const containerComponents = [
+          {
+            type: 10,
+            content: `# 📝 Novo Registro Efetuado\n\n👤 **Membro:** ${member} (\`${member.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n⏱️ **Turno:** \`${sessao.turno}\`\n🏷️ **Apelido Aplicado:** ${nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido'}`
+          },
+          { type: 14, divider: true, spacing: 1 }
+        ];
+
+        if (sessao.fotoUrl) {
+          const anexoFoto = new AttachmentBuilder(sessao.fotoUrl, { name: 'registro_rg.png' });
+          files.push(anexoFoto);
+
+          containerComponents.push({
+            type: 12,
+            items: [{ media: { url: 'attachment://registro_rg.png' } }]
+          });
+        }
+
         const payloadLog = {
+          files,
           components: [{
             type: 17,
             accent_color: 0x2ecc71,
-            components: [
-              {
-                type: 10,
-                content: `# 📝 Novo Registro Efetuado\n\n👤 **Membro:** ${member} (\`${member.id}\`)\n🆔 **Personagem / ID:** \`${sessao.nome}\` | \`${sessao.id}\`\n⏱️ **Turno:** \`${sessao.turno}\`\n🏷️ **Apelido Aplicado:** ${nickSucesso ? `\`${novoNick}\`` : '❌ Sem permissão p/ alterar apelido'}`
-              },
-              { type: 14, divider: true, spacing: 1 },
-              {
-                type: 12,
-                items: [{ media: { url: sessao.fotoUrl } }]
-              }
-            ]
+            components: containerComponents
           }],
           flags: FLAG_V2
         };
