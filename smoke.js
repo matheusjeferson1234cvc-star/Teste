@@ -66,7 +66,7 @@ const djs = new Proxy({
   TextInputStyle:{Short:1,Paragraph:2}
 }, {get(obj,prop){if(prop in obj)return obj[prop];if(prop in types)return class extends Builder {constructor(){super(types[prop]);}};throw Error(`Unknown mocked ${String(prop)}`);}});
 const moduleMock={exports:{}};
-vm.runInNewContext(content,{require:(name)=>{assert.equal(name,'discord.js');return djs;},module:moduleMock,console,
+vm.runInNewContext(content,{require:(name)=>{if(name==='node:path')return require('node:path');assert.equal(name,'discord.js');return djs;},__dirname:path.join(__dirname,'..'),module:moduleMock,console,
   process:{env:{}} ,URL,Buffer,setTimeout,clearTimeout}, {filename:'index.js',timeout:1500});
 const load=moduleMock.exports.load;
 const comum=load('sistemas/comum');
@@ -87,6 +87,26 @@ function validarPainel(label,payload) {
   assert.ok(total <= 40, `${label}: ultrapassou 40 componentes (${total})`);
   console.log('OK:',label, '|', result.components.length,'container(s),',total,'componentes');
 }
+for (const tipo of ['recrutamento','registro','boletim']) {
+  const gif = path.join(__dirname, '..', 'assets', `cetus-${tipo}.gif`);
+  assert.ok(fs.existsSync(gif), `GIF ${tipo} incluído no ZIP`);
+  const arquivo = fs.readFileSync(gif);
+  assert.equal(arquivo.subarray(0, 6).toString('ascii'),'GIF89a',`GIF ${tipo} válido`);
+  assert.ok(arquivo.length < 5 * 1024 * 1024,`GIF ${tipo} leve para Discord`);
+}
+for (const [tipo, p] of [['recrutamento',rec.buildPanel(rec.getConfig('x'))],['registro',reg.buildPanel(reg.getConfig('x'))],['boletim',bo.buildPanel()]]) {
+  validarPainel(`painel animado ${tipo}`, p);
+  assert.equal(p.files.length,1, `GIF ${tipo} presente no payload`);
+  assert.equal(p.files[0].name, `cetus-${tipo}.gif`);
+  const tela=comum.comLogo(p,{iconURL:()=>null});
+  assert.match(JSON.stringify(tela.components), new RegExp('attachment://cetus-'+tipo+'\\.gif'));
+}
+const recCustom = rec.getConfig('custom-banner');
+recCustom.bannerUrl = 'https://example.com/custom.gif';
+const customPanel = rec.buildPanel(recCustom);
+assert.ok(!customPanel.files?.length, 'banner personalizado não requer GIF local');
+assert.match(JSON.stringify(comum.comLogo(customPanel, {iconURL:()=>null}).components), /custom\.gif/);
+console.log('OK: banner personalizado continua disponível');
 validarPainel('menu de recrutamento', rec.menuConfig());
 validarPainel('configuração do registro', reg.painelConfig(reg.getConfig('123')));
 validarPainel('configuração do boletim', bo.painelConfig(bo.getConfig('123')));
@@ -156,6 +176,7 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   };
   function salvarPainel(tipo, id) {
     const m={id,channelId:'chan',author:{id:'bot'},
+      attachments: id==='rec1' ? new Map([['arquivo',{id:'arquivo',name:'cetus-recrutamento.gif'}]]) : new Map(),
       edit:async function(payload){editados.push({id,payload});}};
     msgs.set(`chan:${id}`,m);
     comum.registrarPainelMensagem(tipo,'321',m);
@@ -177,6 +198,8 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   const recSelecao=iBase('rec:s_relatorio',true);
   await rec.handle(recSelecao);
   assert.deepEqual(editados.map(x=>x.id).sort(),['rec1','rec2']);
+  assert.ok(!editados.find(x=>x.id==='rec1')?.payload.files?.length, 'painel com GIF anterior deve reutilizar o anexo');
+  assert.equal(editados.find(x=>x.id==='rec2')?.payload.files?.[0]?.name, 'cetus-recrutamento.gif', 'painel antigo recebe GIF durante atualização');
   assert.equal(rec.getConfig('321').relatorioId,'destino');
   console.log('OK: recrutamento atualiza automaticamente dois painéis');
   editados.length=0;
