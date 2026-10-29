@@ -1,11 +1,11 @@
 {
   "name": "cetus-bot-github-flat",
-  "version": "3.1.0",
+  "version": "3.3.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check cetus-comum.js && node --check cetus-recrutamento.js && node --check cetus-registro.js && node --check cetus-ocorrencias.js && node --check cetus-diagnostico.js && node --check cetus-gifs.js",
+    "check": "node --check index.js && node --check cetus-comum.js && node --check cetus-recrutamento.js && node --check cetus-registro.js && node --check cetus-ocorrencias.js && node --check cetus-diagnostico.js && node --check cetus-gifs.js && node --check cetus-codigo-penal.js",
     "test:offline": "node smoke.js"
   },
   "engines": {
@@ -15,5 +15,5 @@
     "discord.js": "14.25.1",
     "dotenv": "^16.4.7"
   },
-  "description": "Cetus Modular sem pastas: Recrutamento, Registro, BO, diagnóstico e GIFs"
+  "description": "Cetus V3.3: Código Penal Reduto RP com 31 artigos, escolha múltipla no mesmo painel, somas de pena e multas, sem pastas."
 }

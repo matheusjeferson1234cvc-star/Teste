@@ -1,4 +1,4 @@
-// CETUS V3.1 FLAT — ponto de entrada. Todos os módulos ficam na raiz do projeto.
+// CETUS V3.3 FLAT — ponto de entrada. Todos os módulos ficam na raiz do projeto.
 
 'use strict';
 require('dotenv').config();
@@ -30,7 +30,7 @@ const client = new Client({
 });
 client.on('error', e => console.error('Erro do cliente Discord:', e));
 client.once(Events.ClientReady, async ready => {
-  console.log(`🤖 CETUS V3.1 FLAT: ${ready.user.tag} | GIFs disponíveis`);
+  console.log(`🤖 CETUS V3.3 FLAT: ${ready.user.tag} | GIFs disponíveis`);
   const cmds = [...ocorrencias.comandos, registro.comando, recrutamento.comando, diagnostico.comando, ...gifs.comandos].map(c=>c.toJSON());
   const rest = new REST({version:'10'}).setToken(token);
   const guildId = process.env.GUILD_ID?.trim();

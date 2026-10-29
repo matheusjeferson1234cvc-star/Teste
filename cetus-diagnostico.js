@@ -79,10 +79,15 @@ async function gerar(i, escolha) {
     linhas.push('### 🔵 Registro\n' + r.join('\n'));
   }
   if (incluir('bo')) {
-    linhas.push('### 🔴 Boletim de ocorrência\n' + [
+    const itensBO=[
       await checarCanal(guild, me, bo.canalId, 'Canal dos boletins'),
-      checarCargo(guild, me, bo.cargoId, 'Cargo da corporação')
-    ].join('\n'));
+      checarCargo(guild, me, bo.cargoId, 'Cargo geral da corporação')
+    ];
+    for(const [tipo,id] of Object.entries(bo.cargosTipos || {})) {
+      if(id) itensBO.push(checarCargo(guild,me,id,'Cargo '+tipo));
+      else itensBO.push('ℹ️ '+tipo+': utiliza cargo geral');
+    }
+    linhas.push('### 🔴 Boletim de ocorrência\n'+itensBO.join('\n'));
   }
   linhas.push('ℹ️ **Sem banco de dados:** configurações e índice de BOs deixam de existir após reiniciar o bot.\nEste diagnóstico não modifica nenhuma configuração.');
   // Evita estourar o limite do Text Display, mesmo em servidores com muitos cargos.

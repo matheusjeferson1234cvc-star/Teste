@@ -1,72 +1,40 @@
-# CETUS V3.1 — Bot modular sem pastas
+# Cetus V3.3 — Código Penal Reduto RP, seleção integrada
 
-Esta versão mantém os sistemas do CETUS separados em arquivos, mas TODOS OS ARQUIVOS FICAM NA RAIZ.
-Foi preparada para facilitar o envio individual pelo GitHub no celular.
+## Novidade no Boletim de Ocorrência
 
-## Estrutura
+- 31 artigos fictícios do código penal do Reduto RP, organizados em 5 categorias.
+- Em **Prisão**, **Apreensão** ou **Multa**, o bot abre **um único painel privado de seleção de artigos**, sem uma segunda página de confirmação. A pessoa pode pesquisar pelo número ou nome do crime (ex.: `21`, `homicídio`), filtrar por categoria, acrescentar **até 20 artigos** de grupos diferentes e remover artigos quando necessário.
+- Os botões **Normal**, **Reduzida**, **Aumentada** escolhem o tipo de pena do boletim; os tempos dos artigos são somados.
+- As multas fixas também são somadas. Para **Posse de Munição (28)** e **Tráfico de Drogas (04)**, use **Quantidades / Multa extra** para informar quantas unidades: a multa de cada artigo é multiplicada pela quantidade. É possível incluir uma multa extra manual em reais inteiros.
+- **Fianças** são mostradas separadamente; não se somam ao valor da multa.
+- O botão **Preencher e publicar B.O.** abre o formulário padrão do Discord com ID do personagem, local, descrição, policiais e fotos/vídeos. Após enviar, o bot publica automaticamente o B.O., com os artigos e totais visíveis em seção separada.
+- A **edição** do B.O. também permite modificar a seleção dos artigos e mantém os anexos anteriores.
 
-```
-index.js                  <- liga todos os sistemas
-cetus-comum.js            <- Components V2, utilitários, GIFs e painéis
-cetus-recrutamento.js     <- tickets, perguntas, aprovação
-cetus-registro.js         <- modal, TAG, cargos e turnos
-cetus-ocorrencias.js      <- B.O., formulário, anexos, Consulta e edição
-cetus-diagnostico.js      <- /diagnostico
-cetus-gifs.js             <- /testar_gif e /corrigir_gifs
-cetus-recrutamento.gif    <- banner animado
-cetus-registro.gif        <- banner animado
-cetus-boletim.gif         <- banner animado
-package.json
-smoke.js                  <- testes offline opcionais
-LEIA-ME.md
-.env.example              <- modelo de variáveis, SEM token
-.gitignore
- discloud.config
-```
+> Os códigos são regras **fictícias do Reduto RP** fornecidas pelo usuário, e não correspondem à legislação real.
 
-**Não crie a pasta `sistemas` nesta versão.** Os comandos `require('./cetus-X')` são escritos para buscar os arquivos ao lado do `index.js`. Não altere os nomes dos GIFs.
+### Artigo 04/2025 — valor a conferir
+Na tabela fornecida, Tráfico de Drogas tem **pena normal de 20 min, reduzida de 32 min, aumentada de 26 min**. O arquivo preserva esses números exatamente, mas o painel sinaliza a inconsistência para confirmação.
 
-## Como colocar no GitHub pelo celular
+## Código modular, sem criar pastas no GitHub
 
-1. Faça backup do código antigo. Não apague tudo antes de guardar uma cópia.
-2. Extraia o ZIP. Dentro dele estão todos os arquivos, **sem pastas**.
-3. No GitHub, abra o repositório e toque em **Add file → Upload files**.
-4. Selecione os arquivos extraídos diretamente, sem enviar o ZIP fechado.
-5. Confirme com **Commit changes**.
-6. Confira se `index.js`, `cetus-ocorrencias.js` e os 3 GIFs estão todos no mesmo nível da lista.
+Todos os arquivos do ZIP ficam **diretamente na raiz**: `index.js`, `cetus-ocorrencias.js`, `cetus-codigo-penal.js`, os outros módulos `cetus-*.js`, três GIFs, `package.json`, `discloud.config`, `smoke.js` e documentos.
 
-Se o navegador permitir enviar somente alguns por vez, faça vários commits. O GitHub suporta pastas, mas esta versão **não exige** envio de pastas.
+Quando a tabela do Reduto mudar, basta editar `cetus-codigo-penal.js`. Outros módulos de Recrutamento, Registro, GIFs e Diagnóstico continuam separados.
 
-Nunca publique um `.env` contendo `DISCORD_TOKEN`, senhas ou chaves. Configure `DISCORD_TOKEN` nas variáveis privadas da Discloud. `CLIENT_ID` e `GUILD_ID` podem ser definidos conforme seu ambiente.
+### Instalação
 
-## Envio para Discloud
+1. Guarde uma cópia do código anterior antes de substituir.
+2. Extraia o ZIP e suba os arquivos **extraídos**, não o ZIP fechado, na raiz do repositório GitHub.
+3. Confirme que **`cetus-codigo-penal.js`** e todos os outros `.js` foram enviados, com exatamente esses nomes.
+4. Configure o token **fora do GitHub**, na Discloud, pela variável `DISCORD_TOKEN`.
+5. Reinicie o bot e execute `/boletim` no canal onde está o painel antigo para atualizá-lo.
+6. Abra as **Configurações** do B.O. e ajuste o canal e os cargos de acesso, pois as configurações ainda não são persistentes.
+7. Teste **Prisão**, selecione vários artigos, use **Pesquisar**, altere o modo de pena, informe quantidades quando necessárias e confirme a publicação.
 
-Você pode enviar o ZIP inteiro da V3.1 (os arquivos estão na raiz) ou configurar o deploy a partir do GitHub com os arquivos da raiz. Não deixe uma pasta `Cetus-V3.1` adicional envolvendo o `index.js` no deploy.
+### Limitações
 
-Comandos: `/recrutamento`, `/registro`, `/boletim`, `/consultar_bo`, `/diagnostico`, `/testar_gif` e `/corrigir_gifs`.
-
-## Correção do botão Consultar
-
-- **Consultar** abre o formulário para digitar o **ID do personagem do RP**.
-- Busca primeiro os B.O.s gerados desde que o bot foi iniciado e depois pesquisa mensagens anteriores publicadas pelo próprio bot no canal de B.O. configurado.
-- O histórico verifica até **500 mensagens recentes** (5 páginas de 100) do canal; ocorrências mais antigas podem não ser encontradas.
-- O bot precisa de permissão **Ver Canal** e **Ler Histórico de Mensagens** no canal de B.O.
-- Sem Supabase, as **configurações ainda são perdidas ao reiniciar**. Após reiniciar, configure novamente o canal e cargo de B.O. para a busca funcionar; os relatórios antigos continuam no Discord.
-- **Minhas** ainda mostra e edita apenas os boletins registrados desde a última inicialização. A busca histórica adicionada é para **Consultar** e `/consultar_bo`.
-
-## O que continua igual
-
-- Painel B.O. vermelho, com Prisão, Apreensão, Multa, Consultar, Configurações e Minhas.
-- Publicação organizada por envolvido, local, descrição, policiais e arquivos (até 10).
-- GIFs, registro por modal, recrutamento, diagnóstico e atualização automática dos painéis reconhecidos.
-- Crédito **🤖 Organizações • Roleplay | Desenvolvido por Cetus**.
-
-## Verificações locais
-
-```
-npm install
-npm run check
-npm run test:offline
-```
-
-Os testes offline não são uma confirmação de funcionamento em um servidor Discord real.
+- **Sem banco de dados**, os rascunhos e as configurações não sobrevivem ao reinício. Rascunhos privados de artigos expiram em 30 minutos.
+- O Discord limita os menus a 25 opções de cada vez; use as categorias ou a busca para localizar qualquer um dos 31 artigos.
+- O Discord limita os modais a cinco campos; por isso a escolha dos artigos fica na mesma mensagem privada V2 e o preenchimento dos dados ocorre em um modal sobre essa mensagem.
+- Os testes são **offline**, com simulação de interações e validação de sintaxe. Ainda é necessário confirmar a versão em um servidor Discord real.
+- Preserve o crédito `🤖 Organizações • Roleplay | Desenvolvido por Cetus`.
