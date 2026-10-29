@@ -776,8 +776,14 @@ function registroDaInteracao(i, tipo = 'prisao') {
   };
 }
 function corpoBO(b) {
-  const mencoes = [...new Set([b.autorId, ...b.policiais])].map(id => `<@${id}>`).join(' ');
+  const policiasMarcados = [...new Set(b.policiais || [])].map(id => `<@${id}>`).join(', ');
+  const envolvidos = [...new Set([b.autorId, ...(b.policiais || [])])].map(id => `<@${id}>`).join(' ');
   const info = TIPOS_BO[b.tipo] || TIPOS_BO.prisao;
+  const anexoInfo = b.anexosQtd ? `
+
+### 🔎 Evidência da ocorrência
+**Arquivos anexados:** ${b.anexosQtd}
+As imagens e/ou vídeos deste boletim estão logo abaixo.` : '';
   return (
     `# ${info.emoji} | ${info.titulo} ${b.codigo}
 
@@ -791,16 +797,19 @@ function corpoBO(b) {
 ` +
     `**Artigo / local / natureza:** ${b.local}
 ` +
-    `**Policiais envolvidos:** ${mencoes || 'Nenhum informado'}
+    `**Policiais envolvidos:** ${policiasMarcados || 'Nenhum informado'}
 
 ` +
     `**Descrição:**
-${b.relato}
+${b.relato}` +
+    `${anexoInfo}
 
 ` +
     `### 👮 Registro
 ` +
     `**Responsável:** <@${b.autorId}>
+` +
+    `**Envolvidos na ação:** ${envolvidos || `<@${b.autorId}>`}
 ` +
     `**Registrado em:** <t:${Math.floor(b.criadoEm / 1000)}:f>
 ` +
@@ -941,9 +950,10 @@ async function handle(i) {
       if (!podeEnviar(canal)) throw new Error('Canal dos BOs não existe ou o bot não pode enviar mensagens.');
       if (!editando) {
         contador++;
-        const b = { ...dados, codigo: `B.O. #${contador}`, guildId: i.guildId,
-          autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id };
         const files = envioArquivos(fotos);
+        const b = { ...dados, codigo: `B.O. #${contador}`, guildId: i.guildId,
+          autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id,
+          anexosQtd: files.length };
         const payload = gerarPublicacao(b, files.map(f => f.name));
         const msg = await enviarV2(canal, { ...payload, ...(files.length ? { files } : {}) });
         b.mensagemId = msg.id; b.url = msg.url; b.arquivos = files.map(f => f.name);
@@ -951,7 +961,7 @@ async function handle(i) {
         await responder(i, `✅ **${b.codigo}** publicado: ${msg.url}`);
       } else {
         const msg = await canal.messages.fetch(antigo.mensagemId);
-        const novo = { ...antigo, ...dados, editadoEm: Date.now() };
+        const novo = { ...antigo, ...dados, editadoEm: Date.now(), anexosQtd: antigo.anexosQtd || antigo.arquivos?.length || 0 };
         // Nenhum campo attachments -> Discord mantém todos os arquivos anexados.
         await msg.edit({ ...comLogo(gerarPublicacao(novo, antigo.arquivos), i.guild, i.client),
           attachments: [...msg.attachments.values()].map(a => ({ id: a.id })) });
