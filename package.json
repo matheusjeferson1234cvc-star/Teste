@@ -1,11 +1,12 @@
 {
-  "name": "cetus-v2-2-painel-corrigido",
-  "version": "2.2.0",
+  "name": "cetus-bot-v2-auto-paineis-sem-banco",
+  "version": "2.5.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js"
+    "check": "node --check index.js",
+    "test:offline": "node tests/smoke.js"
   },
   "engines": {
     "node": ">=22.12.0"

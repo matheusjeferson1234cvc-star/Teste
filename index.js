@@ -1,4 +1,4 @@
-// CETUS — V2.2 PAINEL CORRIGIDO, teste em arquivo único, sem banco de dados.
+// CETUS — versão de teste em um arquivo único. Sem Supabase, JSON, banco ou persistência.
 'use strict';
 const __cetusRequireReal = require;
 const __cetusModuleFactories = Object.create(null);
@@ -98,20 +98,71 @@ function comLogo(payload, guild, client = null) {
   const logo = validoUrl(process.env.CETUS_LOGO_URL) ||
     guild?.iconURL?.({ extension: 'png', size: 256 }) ||
     client?.user?.displayAvatarURL?.({ extension: 'png', size: 256 });
-  if (!logo) return payload;
-  const componentes = payload.components.map(c => c?.toJSON?.() ?? c);
-  const container = componentes.find(c => c.type === 17);
-  if (!container?.components) return payload;
-  const idx = container.components.findIndex(c => c.type === 10 && c.content);
-  if (idx !== -1) {
-    const original = container.components[idx];
-    container.components[idx] = {
-      type: 9,
-      components: [{ type: 10, content: original.content }],
-      accessory: { type: 11, media: { url: logo } }
-    };
-  }
+  // Serializa builders e divide containers maiores que 10 filhos.
+  // Limite oficial do Discord: 10 componentes diretos em cada container V2.
+  const componentes = payload.components.flatMap(entrada => {
+    const c = entrada?.toJSON?.() ?? entrada;
+    if (c.type !== 17 || !Array.isArray(c.components)) return [c];
+    const internos = [...c.components];
+    const idx = internos.findIndex(f => f.type === 10 && f.content);
+    if (logo && idx !== -1) {
+      internos[idx] = {
+        type: 9,
+        components: [{ type: 10, content: internos[idx].content }],
+        accessory: { type: 11, media: { url: logo } }
+      };
+    }
+    const resultado = [];
+    for (let ini = 0; ini < internos.length; ini += 10) {
+      resultado.push({ ...c, components: internos.slice(ini, ini + 10) });
+    }
+    return resultado;
+  });
   return { ...payload, components: componentes };
+}
+// Painéis públicos observados durante esta execução; nenhuma informação vai para disco.
+// Quando o administrador abre Configurações num painel antigo, ele também é registrado.
+const paineisPublicados = new Map();
+function registrarPainelMensagem(tipo, guildId, msg) {
+  if (!['recrutamento','registro','boletim'].includes(tipo) || !guildId) return false;
+  const canalId = msg?.channelId || msg?.channel?.id;
+  const mensagemId = msg?.id;
+  if (!canalId || !mensagemId) return false;
+  const chave = `${guildId}:${tipo}`;
+  if (!paineisPublicados.has(chave)) paineisPublicados.set(chave, new Map());
+  paineisPublicados.get(chave).set(`${canalId}:${mensagemId}`, { canalId, mensagemId });
+  return true;
+}
+function registrarPainelDoClique(tipo, i) {
+  const autorId = i.message?.author?.id;
+  if (!autorId || autorId !== i.client?.user?.id || mensagemPrivada(i)) return false;
+  return registrarPainelMensagem(tipo, i.guildId, i.message);
+}
+async function sincronizarPaineis(tipo, guild, client, criarPayload) {
+  if (!guild?.id) return { atualizados: 0, falhas: 0 };
+  const alvos = paineisPublicados.get(`${guild.id}:${tipo}`);
+  if (!alvos?.size) return { atualizados: 0, falhas: 0 };
+  let atualizados = 0;
+  let falhas = 0;
+  for (const [chave, alvo] of alvos) {
+    try {
+      const canal = await guild.channels.fetch(alvo.canalId);
+      if (!canal?.messages?.fetch) throw new Error('Canal inacessível');
+      const msg = await canal.messages.fetch(alvo.mensagemId);
+      if (msg.author?.id !== client.user?.id) {
+        alvos.delete(chave); // Nunca edita mensagens de outro bot.
+        continue;
+      }
+      const dados = comLogo(criarPayload(), guild, client);
+      await msg.edit(dados);
+      atualizados++;
+    } catch (e) {
+      falhas++;
+      if (e.code === 10008 || e.code === 10003) alvos.delete(chave);
+      console.warn(`[CETUS] Falha na atualização automática (${tipo}, ${chave}):`, e.message);
+    }
+  }
+  return { atualizados, falhas };
 }
 async function enviarV2(canal, payload) {
   return canal.send(comLogo(payload, canal.guild, canal.client));
@@ -198,7 +249,8 @@ function podeEnviar(canal) { return canal && typeof canal.send === 'function' &&
 module.exports = {
   BRAND, V2, EPHEMERAL, donoAdmin, limpar, validoUrl, texto, botoes, caixa, painel, aviso, replyMensagem,
   campo, upload, modal, arquivos, envioArquivos, responder, erro, guildConfig, podeEnviar,
-  comLogo, enviarV2, atualizar, abrirConfig, concluirConfig
+  comLogo, enviarV2, atualizar, abrirConfig, concluirConfig,
+  registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 };
 
 };
@@ -212,16 +264,19 @@ const {
 } = require('discord.js');
 const {
   donoAdmin, limpar, validoUrl, painel, aviso, replyMensagem, campo, modal, guildConfig, responder, erro, podeEnviar,
-  enviarV2, comLogo, atualizar, abrirConfig, concluirConfig
+  enviarV2, comLogo, atualizar, abrirConfig, concluirConfig,
+  registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
 const configs = new Map();
 const sessoes = new Map();
 const pendentes = new Set();
+const criandoTickets = new Set();
+const avaliando = new Set();
 const cfg = id => guildConfig(configs, id, () => ({
   categoriaId:null, relatorioId:null, anuncioId:null, cargoRecrutador:null,
   cargosAprovar:[], cargosRemover:[], perguntas:[], tempoMs:60000,
   titulo:'📋 │ Central de Recrutamento',
-  descricao:'Bem-vindo ao Sistema Oficial de Recrutamento. Clique para preencher sua candidatura.',
+  descricao:'Bem-vindo ao **Sistema Oficial de Recrutamento**.\nSe deseja ingressar na organização, clique no botão abaixo e preencha o formulário.',
   bannerUrl:null, bannerAprovadoUrl:null, painelCanal:null, painelMensagem:null
 }));
 const comando = new SlashCommandBuilder().setName('recrutamento')
@@ -229,66 +284,70 @@ const comando = new SlashCommandBuilder().setName('recrutamento')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 const permit = i => donoAdmin(i) || !!(cfg(i.guildId).cargoRecrutador && i.member?.roles?.cache?.has(cfg(i.guildId).cargoRecrutador));
 function painelPrincipal(c) {
+  const tempoTxt = c.tempoMs === 60000 ? '1 minuto' : `${Math.round(c.tempoMs / 1000)} segundos`;
   const resultado = painel(c.titulo,
-    `${c.descricao}\n\n**🛡️ Processo seletivo da corporação**`,
-    [[['rec:iniciar','Preencher formulário',ButtonStyle.Primary,'📝'],
+    c.descricao,
+    [[['rec:iniciar','Formulário',ButtonStyle.Primary,'📝'],
       ['rec:config','Configurações',ButtonStyle.Secondary,'⚙️']]],0x27ae60,
-    [`### Etapas\n📝 Formulário e identificação do personagem\n⏱️ **${c.tempoMs / 1000} segundos** por pergunta\n⌛ **10 minutos** de tempo total\n🔎 Análise da gerência e resultado final`,
-     '📷 **Atenção:** envie somente imagens de documentos fictícios do personagem; não envie RG real.']);
-  if (c.bannerUrl) resultado.components[0].addMediaGalleryComponents(
+    [`## 🛡️ Etapas do Processo\n> • 📝 Preenchimento do formulário\n> • ⏱️ Você terá **${tempoTxt}** para responder cada pergunta\n> • 🔎 Análise da candidatura\n> • 🎤 Entrevista com a equipe\n> • ✅ Resultado final`,
+     '📷 **Atenção:** envie apenas imagem do RG **do personagem do jogo**. Não envie documento real.']);
+  if (c.bannerUrl) resultado.components[0].spliceComponents(0, 0,
     new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
   );
   return resultado;
 }
 async function sincronizarPainelPrincipal(i, c) {
-  if (!c.painelCanal || !c.painelMensagem) return;
-  try {
-    const canal=await i.guild.channels.fetch(c.painelCanal);
-    const msg=await canal.messages.fetch(c.painelMensagem);
-    await msg.edit(comLogo(painelPrincipal(c), i.guild, i.client));
-  } catch (e) { console.warn('Recrutamento: falha ao atualizar painel:',e.message); }
+  return sincronizarPaineis('recrutamento', i.guild, i.client, () => painelPrincipal(c));
 }
 function menuConfig() {
-  return painel('⚙️ Central de Configurações | Recrutamento',
-    'Todas as opções ficam nesta janela privada. Navegue pelos botões e use **Voltar** para retornar.',
-    [[['rec:status','Visão geral',ButtonStyle.Primary,'📊'],
-      ['rec:seletores','Canais e cargos',ButtonStyle.Secondary,'🛠️'],
-      ['rec:perguntas','Perguntas',ButtonStyle.Secondary,'❓'],
-      ['rec:visual','Personalizar',ButtonStyle.Secondary,'🎨']]],0x27ae60,
-    ['### Administração\n• Canais, hierarquia e equipe\n• Perguntas e cronômetro\n• Aparência e banners do painel']);
+  return painel('⚙️ Configuração do Recrutamento',
+    'Gerencie o sistema de recrutamento através das opções abaixo.',
+    [
+      [['rec:status','Configuração',ButtonStyle.Secondary,'⚙️']],
+      [['rec:seletores','Definir configurações',ButtonStyle.Secondary,'🛠️']],
+      [['rec:perguntas','Gerenciar perguntas',ButtonStyle.Secondary,'❓']],
+      [['rec:visual','Visual & textos',ButtonStyle.Secondary,'🎨']],
+      [['diag:abrir:rec','Diagnóstico',ButtonStyle.Secondary,'🩺']]
+    ],0x4f66ff,
+    ['⚙️ **Configuração** — visualize o status atual.\n❓ **Perguntas** — gerencie as perguntas.\n🛠️ **Definir configurações** — altere os canais e cargos do sistema.\n🎨 **Visual & textos** — altere título, descrição e banners.']);
 }
 function nomeCargo(id){return id?`<@&${id}>`:'Não definido';}
 function status(c) {
   const ar = a=>a.length?a.map(nomeCargo).join(', '):'Nenhum';
-  return painel('⚙️ Status do Recrutamento',
-    `📁 **Categoria:** ${c.categoriaId?`<#${c.categoriaId}>`:'Não definida'}\n`+
-    `📄 **Relatórios:** ${c.relatorioId?`<#${c.relatorioId}>`:'Não definido'}\n`+
-    `📢 **Anúncios:** ${c.anuncioId?`<#${c.anuncioId}>`:'Não definido'}\n`+
-    `👮 **Recrutador:** ${nomeCargo(c.cargoRecrutador)}\n`+
-    `✅ **Aprovação:** ${ar(c.cargosAprovar)}\n`+
-    `🗑️ **Remover:** ${ar(c.cargosRemover)}\n`+
-    `❓ **Perguntas:** ${c.perguntas.length}/20\n⏱️ **Tempo por pergunta:** ${c.tempoMs/1000}s`,
-    [[['rec:config','Voltar']]]);
+  return painel('⚙️ Configuração do Recrutamento',
+    `📁 **Categoria dos recrutamentos:** ${c.categoriaId?`<#${c.categoriaId}>`:'❌ Não definida'}\n`+
+    `📄 **Canal de relatórios:** ${c.relatorioId?`<#${c.relatorioId}>`:'❌ Não definido'}\n`+
+    `📢 **Canal de anúncios:** ${c.anuncioId?`<#${c.anuncioId}>`:'❌ Não definido'}\n`+
+    `🎖️ **Cargo de aprovado:** ${ar(c.cargosAprovar)}\n`+
+    `🗑️ **Cargos removidos ao aprovar:** ${ar(c.cargosRemover)}\n`+
+    `🛡️ **Cargo de recrutador:** ${nomeCargo(c.cargoRecrutador)}\n`+
+    `❓ **Perguntas cadastradas:** ${c.perguntas.length}/20\n`+
+    `⏱️ **Tempo por pergunta:** ${c.tempoMs === 60000 ? '1 minuto' : `${Math.round(c.tempoMs/1000)} segundos`}`,
+    [[['rec:config','Voltar',ButtonStyle.Secondary,'↩️']]],0x4f66ff);
 }
-function seletores() {
-  const dados = [
-    ['Categoria para os tickets',{ type:8,custom_id:'rec:s_categoria',placeholder:'Selecione categoria',channel_types:[4]}],
-    ['Canal de relatórios',{ type:8,custom_id:'rec:s_relatorio',placeholder:'Selecione canal',channel_types:[0]}],
-    ['Canal de anúncios',{ type:8,custom_id:'rec:s_anuncio',placeholder:'Selecione canal',channel_types:[0]}],
-    ['Cargos ao aprovar',{ type:6,custom_id:'rec:s_aprovar',placeholder:'Até 5 cargos',min_values:0,max_values:5}],
-    ['Cargos a remover',{ type:6,custom_id:'rec:s_remover',placeholder:'Até 5 cargos',min_values:0,max_values:5}],
-    ['Cargo recrutador',{ type:6,custom_id:'rec:s_recrutador',placeholder:'Selecione recrutador'}]
+function seletores(c) {
+  const linha = (titulo, atual, comp) => ([
+    {type:14,divider:true,spacing:1},
+    {type:10,content:`## ${titulo}\n${atual}`},
+    {type:1,components:[comp]}
+  ]);
+  const componentes = [
+    {type:10,content:'# 🛠️ Definir Configurações\n\nConfigure os canais e cargos utilizados pelo sistema de recrutamento.'},
+    ...linha('📁 Categoria dos recrutamentos', c.categoriaId ? `<#${c.categoriaId}>` : '❌ Não definida', { type:8,custom_id:'rec:s_categoria',placeholder:'📁 Selecione a categoria',channel_types:[4]}),
+    ...linha('📄 Canal de relatórios', c.relatorioId ? `<#${c.relatorioId}>` : '❌ Não definido', { type:8,custom_id:'rec:s_relatorio',placeholder:'📄 Selecione o canal de relatórios',channel_types:[0]}),
+    ...linha('📢 Canal de anúncios', c.anuncioId ? `<#${c.anuncioId}>` : '❌ Não definido', { type:8,custom_id:'rec:s_anuncio',placeholder:'📢 Selecione o canal de anúncios',channel_types:[0]}),
+    ...linha('🎖️ Cargo de aprovado', c.cargosAprovar.length ? c.cargosAprovar.map(nomeCargo).join(', ') : '❌ Não definido', { type:6,custom_id:'rec:s_aprovar',placeholder:'🎖️ Selecione os cargos de aprovado',min_values:0,max_values:5}),
+    ...linha('🗑️ Cargos removidos ao aprovar', c.cargosRemover.length ? c.cargosRemover.map(nomeCargo).join(', ') : '❌ Nenhum cargo configurado', { type:6,custom_id:'rec:s_remover',placeholder:'🗑️ Selecione os cargos a remover',min_values:0,max_values:5}),
+    ...linha('🛡️ Cargo de recrutador', c.cargoRecrutador ? nomeCargo(c.cargoRecrutador) : '❌ Não definido', { type:6,custom_id:'rec:s_recrutador',placeholder:'🛡️ Selecione o cargo de recrutador'}),
+    {type:14,divider:true,spacing:1},
+    {type:1,components:[{type:2,style:2,custom_id:'rec:config',label:'Voltar',emoji:{name:'↩️'}}]}
   ];
-  return { flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x3498db,components:[
-    {type:10,content:'# 🛠️ Canais e Cargos\n\nEscolha as opções. São temporárias até a próxima reinicialização.'},
-    ...dados.flatMap(([name,comp])=>[{type:14,divider:true,spacing:1},{type:10,content:`**${name}**`},{type:1,components:[comp]}]),
-    {type:14,divider:true,spacing:1},{type:1,components:[{type:2,style:2,custom_id:'rec:config',label:'Voltar'}]}
-  ]}]};
+  return { flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x4f66ff,components:componentes}]};
 }
 function menuPerguntas(c) {
+  const tempoTxt = c.tempoMs === 60000 ? '1 minuto' : `${Math.round(c.tempoMs/1000)} segundos`;
   const lista=c.perguntas.map((p,idx)=>`**${idx+1}.** ${limpar(p,120)}`).join('\n')||'*Nenhuma pergunta cadastrada.*';
-  // O texto por componente tem limite. Segmenta para evitar painéis gigantes.
-  const componentes = [{type:10,content:`# ❓ Perguntas (${c.perguntas.length}/20)\nTempo atual: **${c.tempoMs/1000} segundos**`}];
+  const componentes = [{type:10,content:`# ❓ Gerenciar perguntas\n\n⏱️ **Tempo atual por pergunta:** ${tempoTxt}\n\n📋 **Perguntas cadastradas (${c.perguntas.length}/20):**`}];
   const blocos=[];
   let atual='';
   for(const l of lista.split('\n')) {if(atual.length+l.length>3000){blocos.push(atual);atual='';}atual+=(atual?'\n':'')+l;}
@@ -296,16 +355,16 @@ function menuPerguntas(c) {
   for(const p of blocos.slice(0,6)) componentes.push({type:10,content:p});
   componentes.push({type:14,divider:true,spacing:1},
     {type:1,components:[
-      {type:2,style:3,custom_id:'rec:add',label:'Adicionar'},
-      {type:2,style:4,custom_id:'rec:pop',label:'Remover última'},
-      {type:2,style:4,custom_id:'rec:escolher_rem',label:'Remover específica'}
+      {type:2,style:3,custom_id:'rec:add',label:'Adicionar',emoji:{name:'➕'}},
+      {type:2,style:4,custom_id:'rec:pop',label:'Remover última',emoji:{name:'➖'}},
+      {type:2,style:4,custom_id:'rec:escolher_rem',label:'Remover específica',emoji:{name:'🗑️'}}
     ]},
-    {type:1,components:[{type:3,custom_id:'rec:s_tempo',placeholder:'Tempo por pergunta',options:[
+    {type:1,components:[{type:3,custom_id:'rec:s_tempo',placeholder:'⏱️ Selecione o tempo por pergunta',options:[
       {label:'30 segundos',value:'30000'},{label:'1 minuto',value:'60000'},
       {label:'3 minutos',value:'180000'},{label:'5 minutos',value:'300000'}
     ]}]},
-    {type:1,components:[{type:2,style:2,custom_id:'rec:config',label:'Voltar'}]});
-  return {flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x3498db,components:componentes}]};
+    {type:1,components:[{type:2,style:2,custom_id:'rec:config',label:'Voltar',emoji:{name:'↩️'}}]});
+  return {flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x4f66ff,components:componentes}]};
 }
 async function sincronizar(canal, messageId, builder) {
   try{if(!canal || !messageId) return; const msg=await canal.messages.fetch(messageId);await msg.edit(builder());}catch(e){console.warn('Não foi possível atualizar painel:',e.message);}
@@ -350,9 +409,29 @@ async function finalizar(sessao){
   const partes=[];while(conteudo.length){partes.push(conteudo.slice(0,3400));conteudo=conteudo.slice(3400);}
   // Publicação em blocos, caso perguntas e respostas somem mais que 4 mil caracteres.
   for(let j=0;j<partes.length;j++) await enviarV2(canal, painel(j===0?'📋 Candidatura':'📋 Continuação',partes[j],[],0x3498db));
-  const aviso = (sessao.rg ? `📷 **RG fictício do personagem:** ${sessao.rg}\n` : '📷 **RG:** não enviado\n');
-  await enviarV2(canal, painel('🔎 Avaliar candidatura',aviso+`Candidato <@${sessao.userId}>\nPersonagem ${sessao.nome}`,
-    [[[`rec:aprovar:${sessao.userId}`,'Aprovar',ButtonStyle.Success],[`rec:reprovar:${sessao.userId}`,'Reprovar',ButtonStyle.Danger]]],0x3498db));
+  const dados = `Candidato <@${sessao.userId}>\nPersonagem ${sessao.nome}`;
+  const aval = painel('🔎 Avaliar candidatura',
+    `📷 **RG fictício do personagem:** ${sessao.rg ? 'imagem anexada abaixo' : 'não enviado'}\n${dados}`,
+    [[[`rec:aprovar:${sessao.userId}`,'Aprovar',ButtonStyle.Success],
+      [`rec:reprovar:${sessao.userId}`,'Reprovar',ButtonStyle.Danger]]],0x3498db);
+  if (sessao.rg) {
+    // Republica no relatório antes de apagar o ticket: evita depender do anexo original.
+    const ext = String(sessao.rgExt || 'png').replace(/[^a-z0-9]/gi,'').slice(0,5) || 'png';
+    const nome = `rg_personagem_${sessao.userId}.${ext}`;
+    aval.files = [{ attachment: sessao.rg, name: nome }];
+    aval.components[0].addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(`attachment://${nome}`))
+    );
+  }
+  try { await enviarV2(canal, aval); }
+  catch (e) {
+    if (!sessao.rg) throw e;
+    console.warn('Falha ao copiar imagem de RG fictício para relatório:', e.message);
+    await enviarV2(canal, painel('🔎 Avaliar candidatura',
+      `⚠️ **Imagem não pôde ser copiada.** Confira o ticket antes de ele fechar.\n${dados}`,
+      [[[`rec:aprovar:${sessao.userId}`,'Aprovar',ButtonStyle.Success],
+        [`rec:reprovar:${sessao.userId}`,'Reprovar',ButtonStyle.Danger]]],0xe67e22));
+  }
   pendentes.add(`${sessao.guildId}:${sessao.userId}`);
   encerrar(sessao,'Formulário enviado para avaliação.');
 }
@@ -360,8 +439,11 @@ async function criarTicket(i, nome) {
   const c=cfg(i.guildId), key=`${i.guildId}:${i.user.id}`;
   if(!c.relatorioId) throw new Error('Configure o canal de relatórios antes de receber recrutamentos.');
   if(pendentes.has(key)) throw new Error('Você já tem uma candidatura aguardando análise.');
+  if(criandoTickets.has(key)) throw new Error('Seu ticket já está sendo criado. Aguarde um instante.');
   if([...sessoes.values()].some(s=>s.guildId===i.guildId && s.userId===i.user.id)) throw new Error('Você já tem um ticket em andamento.');
   if([...sessoes.values()].filter(s=>s.guildId===i.guildId).length>=10) throw new Error('Há 10 recrutamentos simultâneos. Aguarde uma vaga.');
+  criandoTickets.add(key);
+  try {
   const perm=[
     {id:i.guild.id,deny:[PermissionsBitField.Flags.ViewChannel]},
     {id:i.user.id,allow:[PermissionsBitField.Flags.ViewChannel,PermissionsBitField.Flags.SendMessages,PermissionsBitField.Flags.AttachFiles]}
@@ -376,6 +458,7 @@ async function criarTicket(i, nome) {
   sessao.timerGeral.unref?.();
   await encaminharProxima(sessao);
   return canal;
+  } finally { criandoTickets.delete(key); }
 }
 async function handleMessage(m) {
   if(m.author.bot||!m.guild)return;
@@ -387,6 +470,7 @@ async function handleMessage(m) {
       await replyMensagem(m, '⚠️ Envie uma imagem do RG **fictício do personagem** (ou aguarde o tempo expirar).');return;
     }
     s.rg=a.url;
+    s.rgExt = (a.name?.split('.').pop() || 'png').toLowerCase();
   }else {
     if(!m.content.trim()) {await replyMensagem(m, '⚠️ Responda com texto.');return;}
     s.respostas.push({pergunta:s.perguntas[s.step-1], resposta:m.content.slice(0,1500)});
@@ -407,6 +491,7 @@ async function handle(i){
       await i.deferReply({flags:MessageFlags.Ephemeral});
       const msg=await enviarV2(i.channel, painelPrincipal(c));
       c.painelCanal=msg.channelId;c.painelMensagem=msg.id;
+      registrarPainelMensagem('recrutamento', i.guildId, msg);
       await responder(i, `✅ Painel publicado: ${msg.url}`);return true;
     }
     if(button&&i.customId==='rec:iniciar'){
@@ -424,7 +509,8 @@ async function handle(i){
       const aprovado=i.customId.startsWith('rec:aprovar:');
       const userId=i.customId.split(':')[2];
       const key=`${i.guildId}:${userId}`;
-      if(!pendentes.has(key)){await responder(i,'⚠️ Não há candidatura pendente para esse usuário (ou o bot reiniciou).');return true;}
+      if(!pendentes.has(key) || avaliando.has(key)){await responder(i,'⚠️ Esta candidatura já está sendo analisada ou não está pendente.');return true;}
+      avaliando.add(key);
       await i.deferUpdate();
       const member=await i.guild.members.fetch(userId).catch(()=>null);
       if(aprovado&&member){
@@ -434,6 +520,7 @@ async function handle(i){
       await i.editReply(comLogo(painel(aprovado?'✅ Candidatura aprovada':'❌ Candidatura reprovada',
         `Candidato <@${userId}>\nAnalisado por <@${i.user.id}>`,[],aprovado?0x2ecc71:0xe74c3c), i.guild, i.client));
       pendentes.delete(key);
+      avaliando.delete(key);
       if(member)member.send(comLogo(painel(aprovado?'✅ Recrutamento aprovado':'❌ Recrutamento reprovado', `Servidor: **${i.guild.name}**
 Situação: ${aprovado?'Aprovado ✅':'Reprovado ❌'}`, [], aprovado?0x2ecc71:0xe74c3c), i.guild, i.client)).catch(()=>null);
       if(aprovado&&c.anuncioId){const canal=await i.guild.channels.fetch(c.anuncioId).catch(()=>null);
@@ -443,9 +530,9 @@ Situação: ${aprovado?'Aprovado ✅':'Reprovado ❌'}`, [], aprovado?0x2ecc71:0
     }
     if(!donoAdmin(i)){await responder(i,'❌ Apenas administradores podem configurar.');return true;}
     if(button){
-      if(i.customId==='rec:config'){await abrirConfig(i,menuConfig());return true;}
+      if(i.customId==='rec:config'){registrarPainelDoClique('recrutamento',i);await abrirConfig(i,menuConfig());return true;}
       if(i.customId==='rec:status'){await atualizar(i, status(c));return true;}
-      if(i.customId==='rec:seletores'){await atualizar(i, seletores());return true;}
+      if(i.customId==='rec:seletores'){await atualizar(i, seletores(c));return true;}
       if(i.customId==='rec:perguntas'){await atualizar(i, menuPerguntas(c));return true;}
       if(i.customId==='rec:visual'){
         await i.showModal(modal('rec:edit_visual','Visual do Recrutamento',[
@@ -460,7 +547,10 @@ Situação: ${aprovado?'Aprovado ✅':'Reprovado ❌'}`, [], aprovado?0x2ecc71:0
         await i.showModal(modal('rec:adicionar','Adicionar pergunta',[
           campo('rec_pergunta','Pergunta',{max:250,paragraph:true})]));return true;
       }
-      if(i.customId==='rec:pop'){c.perguntas.pop();await sincronizarPainelPrincipal(i,c);await atualizar(i, menuPerguntas(c));return true;}
+      if(i.customId==='rec:pop'){
+        c.perguntas.pop(); await atualizar(i, menuPerguntas(c));
+        await sincronizarPainelPrincipal(i,c); return true;
+      }
       if(i.customId==='rec:escolher_rem'){
         if(!c.perguntas.length){await responder(i,'Nenhuma pergunta para remover.');return true;}
         const menu=new StringSelectMenuBuilder().setCustomId('rec:s_remover_pergunta')
@@ -481,29 +571,40 @@ Situação: ${aprovado?'Aprovado ✅':'Reprovado ❌'}`, [], aprovado?0x2ecc71:0
         case 'rec:s_aprovar':c.cargosAprovar=value;break;
         case 'rec:s_remover':c.cargosRemover=value;break;
         case 'rec:s_recrutador':c.cargoRecrutador=value[0];break;
-        case 'rec:s_tempo':c.tempoMs=Number(value[0]);await sincronizarPainelPrincipal(i,c);await atualizar(i, menuPerguntas(c));return true;
-        case 'rec:s_remover_pergunta':c.perguntas.splice(Number(value[0]),1);await atualizar(i, menuPerguntas(c));return true;
+        case 'rec:s_tempo':
+          c.tempoMs=Number(value[0]); await atualizar(i, menuPerguntas(c));
+          await sincronizarPainelPrincipal(i,c); return true;
+        case 'rec:s_remover_pergunta':
+          c.perguntas.splice(Number(value[0]),1); await atualizar(i, menuPerguntas(c));
+          await sincronizarPainelPrincipal(i,c); return true;
       }
-      await atualizar(i, seletores());return true;
+      await atualizar(i, seletores(c));
+      await sincronizarPainelPrincipal(i,c); return true;
     }
     if(m&&i.customId==='rec:edit_visual'){
       c.titulo=limpar(i.fields.getTextInputValue('rec_titulo'),90);
       c.descricao=limpar(i.fields.getTextInputValue('rec_desc'),800);
       c.bannerUrl=validoUrl(i.fields.getTextInputValue('rec_banner'));
       c.bannerAprovadoUrl=validoUrl(i.fields.getTextInputValue('rec_banner_aprovado'));
-      await sincronizarPainelPrincipal(i,c);
-      await concluirConfig(i, menuConfig());return true;
+      await concluirConfig(i, menuConfig());
+      await sincronizarPainelPrincipal(i,c); return true;
     }
     if(m&&i.customId==='rec:adicionar'){
       if(c.perguntas.length>=20){await responder(i,'❌ Limite atingido.');return true;}
       c.perguntas.push(limpar(i.fields.getTextInputValue('rec_pergunta'),250));
-      await sincronizarPainelPrincipal(i,c);
-      await concluirConfig(i, menuPerguntas(c));return true;
+      await concluirConfig(i, menuPerguntas(c));
+      await sincronizarPainelPrincipal(i,c); return true;
     }
     return true;
-  }catch(e){await erro(i,e);return true;}
+  }catch(e){
+    if(i.customId?.startsWith('rec:aprovar:') || i.customId?.startsWith('rec:reprovar:'))
+      avaliando.delete(`${i.guildId}:${i.customId.split(':')[2]}`);
+    await erro(i,e);return true;
+  }
 }
-module.exports={comando,handle,handleMessage};
+module.exports={comando,handle,handleMessage,getConfig:cfg,menuConfig,buildPanel:painelPrincipal,
+  registrarPainel:(id,msg)=>{const c=cfg(id);c.painelCanal=msg.channelId;c.painelMensagem=msg.id;
+    registrarPainelMensagem('recrutamento',id,msg);}};
 
 };
 
@@ -516,91 +617,86 @@ const {
 } = require('discord.js');
 const {
   donoAdmin, limpar, validoUrl, painel, aviso, campo, upload, modal, arquivos, envioArquivos,
-  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig, concluirConfig
+  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig, concluirConfig,
+  registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
 const configs = new Map();
 const novo = () => ({ logId: null, cargoResponsavel: null, cargosAtribuir: [], cargosRemover: [],
+  usarTurnos: false,
   turnos: { manha: null, tarde: null, noite: null, madrugada: null }, tag: '',
-  titulo: '👤 │ Central de Registro', descricao: 'Preencha o formulário para receber o cargo e a identificação da corporação.', bannerUrl: null, painelCanal: null, painelMensagem: null });
+  titulo: '👤 │ Central de Registro', descricao: 'Utilize este painel para realizar seu **registro oficial** na organização.\nApós concluir o formulário, seus dados serão processados e sua identificação será atualizada automaticamente.', bannerUrl: null, painelCanal: null, painelMensagem: null });
 const cfg = id => guildConfig(configs, id, novo);
 const comando = new SlashCommandBuilder().setName('registro')
   .setDescription('Envia o painel oficial de registro (sem ticket)')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 const nomes = { manha: '🌅 Manhã', tarde: '☀️ Tarde', noite: '🌙 Noite', madrugada: '🌌 Madrugada' };
 function painelRegistro(c) {
-  const resultado = painel(c.titulo, c.descricao + '\n\n' +
-    '📝 Clique em **Registre-se** e preencha nome, ID e turno.\n📸 Você pode anexar a imagem do RG **do personagem do jogo** (não envie documentos reais).\n✅ O bot aplicará seus cargos e apelido. **Não cria ticket.**' +
-    (c.bannerUrl ? `\n\n🖼️ [Banner do Registro](${c.bannerUrl})` : ''),
+  const resultado = painel(c.titulo,
+    c.descricao,
     [[['reg:iniciar', 'Registre-se', ButtonStyle.Primary, '📝'],
-      ['reg:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]], 0x2980b9);
-  if (c.bannerUrl) resultado.components[0].addMediaGalleryComponents(
+      ['reg:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]], 0x2980b9,
+    ['## ❔ Como funciona?\n> • 📝 Preencha o formulário de registro.\n> • 👤 Informe seus dados corretamente.\n> • 🏷️ Seu nome e cargos serão configurados automaticamente.\n> • ✅ O registro será concluído imediatamente.']);
+  if (c.bannerUrl) resultado.components[0].spliceComponents(0, 0,
     new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
   );
   return resultado;
 }
 async function sincronizarPainel(i, c) {
-  if (!c.painelCanal || !c.painelMensagem) return;
-  try {
-    const canal = await i.guild.channels.fetch(c.painelCanal);
-    const msg = await canal.messages.fetch(c.painelMensagem);
-    await msg.edit(comLogo(painelRegistro(c), i.guild, i.client));
-  } catch (e) { console.warn('Registro: painel não pôde ser atualizado:', e.message); }
+  return sincronizarPaineis('registro', i.guild, i.client, () => painelRegistro(c));
 }
 function status(c) {
-  const lista = items => items.length ? items.map(x => `<@&${x}>`).join(', ') : 'Não configurados';
-  const txt = `📌 **Canal de LOG:** ${c.logId ? `<#${c.logId}>` : 'Não configurado'}\n` +
-    `👮 **Cargo responsável:** ${c.cargoResponsavel ? `<@&${c.cargoResponsavel}>` : 'Não configurado'}\n` +
-    `✅ **Cargos atribuir:** ${lista(c.cargosAtribuir)}\n` +
-    `🗑️ **Cargos remover:** ${lista(c.cargosRemover)}\n` +
-    `🏷️ **TAG de nome:** ${c.tag || '(nenhuma)'}\n\n` +
-    Object.entries(nomes).map(([k, nome]) => `${nome}: ${c.turnos[k] ? `<@&${c.turnos[k]}>` : 'Não definido'}`).join('\n');
-  return painel('⚙️ Configurações do Registro', txt + '\n\n**Gerencie todas as seções nesta mesma janela.**', 
-    [[['reg:config_geral','Canais e cargos',ButtonStyle.Primary],
-      ['reg:config_turnos','Cargos dos turnos'],['reg:config_visual','TAG e painel']]], 0x3498db);
+  const turnoAtivo = c.usarTurnos ? 'Turno/Equipe: Ativado' : 'Turno/Equipe: Desativado';
+  const components = [
+    { type:10, content:'# ⚙️ Configuração de Registro\n\nConfigure os canais e cargos do sistema abaixo.' },
+    { type:14, divider:true, spacing:1 },
+    { type:1, components:[{ type:8, custom_id:'reg:s_log', channel_types:[0], placeholder:'📌 Selecione canal de LOG' }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_atribuir', placeholder:'🎖️ Selecione cargo a atribuir', min_values:0, max_values:5 }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_remover', placeholder:'🗑️ Selecione cargos a remover', min_values:0, max_values:5 }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_responsavel', placeholder:'📣 Selecione Responsavel' }] },
+    { type:14, divider:true, spacing:1 },
+    { type:10, content:'# 🕘 Turno / Equipe\n\nAtive para mostrar a seleção no formulário.\nO cargo escolhido será aplicado quando o registro for aprovado.' },
+    { type:1, components:[{ type:2, custom_id:'reg:toggle_turnos', label: turnoAtivo, style: c.usarTurnos ? 3 : 4 }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_turno_manha', placeholder:'🌅 Cargo do turno Manhã' }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_turno_tarde', placeholder:'☀️ Cargo do turno Tarde' }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_turno_noite', placeholder:'🌙 Cargo do turno Noite' }] },
+    { type:1, components:[{ type:6, custom_id:'reg:s_turno_madrugada', placeholder:'🌌 Cargo do turno Madrugada' }] },
+    { type:14, divider:true, spacing:1 },
+    { type:1, components:[{ type:2, custom_id:'reg:ver_status', label:'Configuração Atual', style:1, emoji:{name:'🔎'} }] },
+    { type:1, components:[{ type:2, custom_id:'reg:config_visual', label:'Configurar TAG do nome', style:2, emoji:{name:'🏷️'} }] },
+    { type:1, components:[{ type:2, custom_id:'diag:abrir:reg', label:'🩺 Diagnóstico', style:2 }] }
+  ];
+  return { flags: MessageFlags.IsComponentsV2, components: [{ type:17, accent_color:0x3498db, components }] };
 }
-function painelSelect(titulo, descricao, selectores, volta = 'reg:config') {
-  const c = [{ type:10, content: `# ${titulo}\n\n${descricao}` }];
-  for (const s of selectores) {
-    c.push({ type: 14, divider: true, spacing: 1 });
-    c.push({ type: 10, content: s.rotulo });
-    c.push({ type:1, components:[s.campo] });
-  }
-  c.push({type:14, divider:true, spacing:1});
-  c.push({type:1, components:[{type:2, custom_id:volta, label:'Voltar', style:2}]});
-  return { flags: MessageFlags.IsComponentsV2, components: [{type:17, accent_color:0x3498db, components:c}] };
+function painelResumo(c) {
+  const lista = items => items.length ? items.map(x => `<@&${x}>`).join(', ') : '❌ Não configurado';
+  const txt = `📌 **Canal de LOG:** ${c.logId ? `<#${c.logId}>` : '❌ Não configurado'}\n` +
+    `🎖️ **Cargos a atribuir:** ${lista(c.cargosAtribuir)}\n` +
+    `🗑️ **Cargos a remover:** ${lista(c.cargosRemover)}\n` +
+    `📣 **Responsável:** ${c.cargoResponsavel ? `<@&${c.cargoResponsavel}>` : '❌ Não configurado'}\n` +
+    `🏷️ **TAG do nome:** ${c.tag || '❌ Nenhuma'}\n` +
+    `🕘 **Turno / Equipe:** ${c.usarTurnos ? 'Ativado' : 'Desativado'}\n\n` +
+    Object.entries(nomes).map(([k, nome]) => `${nome}: ${c.turnos[k] ? `<@&${c.turnos[k]}>` : '❌ Não definido'}`).join('\n');
+  return painel('🔎 Configuração Atual', txt, [[['reg:config','Voltar',ButtonStyle.Secondary,'↩️']]], 0x3498db);
 }
-function selecionarCargo(id, placeholder, varios = false) {
-  return { type:6, custom_id:id, placeholder, min_values: varios ? 0 : 1, max_values: varios ? 5 : 1 };
-}
-function painelGeral() {
-  return painelSelect('🛠️ Definir canais e cargos', 'Cada seleção é aplicada imediatamente.', [
-    {rotulo:'Canal de LOG',campo:{type:8,custom_id:'reg:s_log',channel_types:[0],placeholder:'Escolha o canal de logs'}},
-    {rotulo:'Cargo responsável',campo:selecionarCargo('reg:s_responsavel','Cargo responsável')},
-    {rotulo:'Cargos a atribuir (até 5)',campo:selecionarCargo('reg:s_atribuir','Selecione cargos',true)},
-    {rotulo:'Cargos a remover (até 5)',campo:selecionarCargo('reg:s_remover','Selecione cargos',true)}
-  ]);
-}
-function painelTurnos() {
-  return painelSelect('⏱️ Cargos por turno', 'O bot entrega o cargo do turno escolhido e remove os cargos dos outros turnos.',
-    Object.entries(nomes).map(([k, titulo]) => ({ rotulo: titulo,
-      campo: selecionarCargo(`reg:s_turno_${k}`, `Selecione cargo de ${titulo}`) })));
-}
-function modalRegistro() {
-  const turnos = new StringSelectMenuBuilder().setCustomId('reg_turno').setRequired(true)
-    .setMinValues(1).setMaxValues(1).addOptions(Object.entries(nomes).map(([value,label]) => ({label,value})));
-  return modal('reg:form','Registro Oficial',[
+function modalRegistro(c) {
+  const campos = [
     campo('reg_nome','Nome do personagem',{max:40,placeholder:'Ex: João Silva'}),
-    campo('reg_id','Passaporte / ID no jogo',{max:20,placeholder:'Ex: 1234'}),
-    new LabelBuilder().setLabel('Turno de atuação').setStringSelectMenuComponent(turnos),
-    upload('reg_rg','RG do personagem (imagem opcional)',1)
-  ]);
+    campo('reg_id','Passaporte / ID no jogo',{max:20,placeholder:'Ex: 1234'})
+  ];
+  if (c.usarTurnos) {
+    const turnos = new StringSelectMenuBuilder().setCustomId('reg_turno').setRequired(true)
+      .setMinValues(1).setMaxValues(1).addOptions(Object.entries(nomes).map(([value,label]) => ({label,value})));
+    campos.push(new LabelBuilder().setLabel('Turno de atuação').setStringSelectMenuComponent(turnos));
+  }
+  campos.push(upload('reg_rg','RG do personagem (imagem opcional)',1));
+  return modal('reg:form','Registro Oficial',campos);
 }
 async function executarRegistro(i) {
   const c = cfg(i.guildId);
   const nome = limpar(i.fields.getTextInputValue('reg_nome'),40);
   const id = limpar(i.fields.getTextInputValue('reg_id'),20);
-  const turno = i.fields.getStringSelectValues('reg_turno')[0];
-  if (!nome || !id || !nomes[turno]) throw new Error('Nome, ID ou turno inválido.');
+  const turno = c.usarTurnos ? i.fields.getStringSelectValues('reg_turno')[0] : null;
+  if (!nome || !id || (c.usarTurnos && !nomes[turno])) throw new Error('Nome, ID ou turno inválido.');
   const foto = arquivos(i, 'reg_rg', 1, true);
   await i.deferReply({flags:MessageFlags.Ephemeral});
   const membro = await i.guild.members.fetch(i.user.id);
@@ -610,9 +706,9 @@ async function executarRegistro(i) {
   if (novoNick.length > 32) novoNick = formato.slice(0,32);
   try { await membro.setNickname(novoNick); }
   catch(e) { falhas.push('apelido (hierarquia/permissão)'); console.error(e); }
-  const adicionar = [...new Set([...c.cargosAtribuir, ...(c.turnos[turno] ? [c.turnos[turno]] : [])])];
+  const adicionar = [...new Set([...c.cargosAtribuir, ...((c.usarTurnos && turno && c.turnos[turno]) ? [c.turnos[turno]] : [])])];
   const remover = [...new Set([...c.cargosRemover,
-    ...Object.entries(c.turnos).filter(([t])=>t!==turno).map(([,cargo])=>cargo).filter(Boolean)])].filter(x => !adicionar.includes(x));
+    ...(c.usarTurnos && turno ? Object.entries(c.turnos).filter(([t])=>t!==turno).map(([,cargo])=>cargo).filter(Boolean) : [])])].filter(x => !adicionar.includes(x));
   try { if (remover.length) await membro.roles.remove(remover); }
   catch(e) { falhas.push('remoção de cargos'); console.error(e); }
   try { if (adicionar.length) await membro.roles.add(adicionar); }
@@ -621,7 +717,7 @@ async function executarRegistro(i) {
     const canal = await i.guild.channels.fetch(c.logId).catch(()=>null);
     if (podeEnviar(canal)) {
       try {
-        const texto = `# ✅ Novo registro\n👤 **Discord:** <@${i.user.id}>\n🆔 **Personagem:** ${nome} | ${id}\n⏱️ **Turno:** ${nomes[turno]}\n🏷️ **Apelido:** ${limpar(novoNick)}\n${falhas.length ? `⚠️ **Pendências:** ${falhas.join(', ')}` : ''}`;
+        const texto = `# ✅ Novo registro\n👤 **Discord:** <@${i.user.id}>\n🆔 **Personagem:** ${nome} | ${id}\n⏱️ **Turno:** ${c.usarTurnos && turno ? nomes[turno] : 'Não utilizado'}\n🏷️ **Apelido:** ${limpar(novoNick)}\n${falhas.length ? `⚠️ **Pendências:** ${falhas.join(', ')}` : ''}`;
         // LOG não expõe documentos reais. RG é do personagem, não um documento pessoal.
         const files = envioArquivos(foto);
         if (files.length) {
@@ -638,7 +734,8 @@ async function executarRegistro(i) {
       } catch(e) { falhas.push('envio do LOG'); console.error(e); }
     }
   }
-  await responder(i, falhas.length ? `⚠️ Registro processado, mas houve falha em: ${falhas.join(', ')}. Verifique a hierarquia dos cargos e as permissões do bot.` : `✅ Registro concluído! **${nome} | ${id}** — turno **${nomes[turno]}**. Cargos e apelido aplicados.`);
+  const resumoTurno = c.usarTurnos && turno ? ` — turno **${nomes[turno]}**` : '';
+  await responder(i, falhas.length ? `⚠️ Registro processado, mas houve falha em: ${falhas.join(', ')}. Verifique a hierarquia dos cargos e as permissões do bot.` : `✅ Registro concluído! **${nome} | ${id}**${resumoTurno}. Cargos e apelido aplicados.`);
 }
 async function handle(i) {
   const cmd = i.isChatInputCommand() && i.commandName === 'registro';
@@ -653,16 +750,17 @@ async function handle(i) {
       const c = cfg(i.guildId);
       const mensagem = await enviarV2(i.channel, painelRegistro(c));
       c.painelCanal = mensagem.channelId; c.painelMensagem = mensagem.id;
+      registrarPainelMensagem('registro', i.guildId, mensagem);
       await responder(i, `✅ Painel enviado: ${mensagem.url}`);return true;
     }
-    if (button && i.customId === 'reg:iniciar') { await i.showModal(modalRegistro()); return true; }
+    if (button && i.customId === 'reg:iniciar') { const c = cfg(i.guildId); await i.showModal(modalRegistro(c)); return true; }
     if (m && i.customId==='reg:form') {await executarRegistro(i);return true;}
     if (!donoAdmin(i)) {await responder(i,'❌ Apenas administradores alteram configurações.');return true;}
     const c=cfg(i.guildId);
     if (button) {
-      if (i.customId==='reg:config') { await abrirConfig(i,status(c));return true; }
-      if (i.customId==='reg:config_geral') {await atualizar(i, painelGeral());return true;}
-      if (i.customId==='reg:config_turnos') {await atualizar(i, painelTurnos());return true;}
+      if (i.customId==='reg:config') { registrarPainelDoClique('registro',i);await abrirConfig(i,status(c));return true; }
+      if (i.customId==='reg:toggle_turnos') { c.usarTurnos = !c.usarTurnos; await atualizar(i, status(c)); await sincronizarPainel(i,c); return true; }
+      if (i.customId==='reg:ver_status') { await atualizar(i, painelResumo(c)); return true; }
       if (i.customId==='reg:config_visual') {
         await i.showModal(modal('reg:visual','Personalizar Registro',[
           campo('reg_tag','TAG do apelido (opcional)',{value:c.tag,max:12,required:false}),
@@ -684,20 +782,23 @@ async function handle(i) {
           if (Object.hasOwn(c.turnos,turno)) c.turnos[turno]=v[0];
         }
       }
-      await atualizar(i, i.customId.startsWith('reg:s_turno_') ? painelTurnos() : painelGeral()); return true;
+      await atualizar(i, status(c));
+      await sincronizarPainel(i,c); return true;
     }
     if (m && i.customId==='reg:visual') {
       c.tag=limpar(i.fields.getTextInputValue('reg_tag'),12);
       c.titulo=limpar(i.fields.getTextInputValue('reg_titulo'),90);
       c.descricao=limpar(i.fields.getTextInputValue('reg_desc'),800);
       c.bannerUrl=validoUrl(i.fields.getTextInputValue('reg_banner'));
-      await sincronizarPainel(i, c);
-      await concluirConfig(i, status(c));return true;
+      await concluirConfig(i, status(c));
+      await sincronizarPainel(i,c); return true;
     }
     return true;
   } catch(e) {await erro(i,e);return true;}
 }
-module.exports={comando,handle};
+module.exports={comando,handle,getConfig:cfg,painelConfig:status,buildPanel:painelRegistro,
+  registrarPainel:(id,msg)=>{const c=cfg(id);c.painelCanal=msg.channelId;c.painelMensagem=msg.id;
+    registrarPainelMensagem('registro',id,msg);}};
 
 };
 
@@ -711,7 +812,8 @@ const {
 } = require('discord.js');
 const {
   donoAdmin, limpar, painel, caixa, aviso, campo, upload, modal, arquivos, envioArquivos,
-  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig
+  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig,
+  registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
 
 const configuracoes = new Map();
@@ -720,77 +822,26 @@ let contador = 0;
 const cfg = id => guildConfig(configuracoes, id, () => ({ canalId: null, cargoId: null }));
 const botao = (a, b) => [a, b, ButtonStyle.Secondary];
 
-const CETUS_VERSAO = '2.2.0-painel-corrigido';
 const comandos = [
-  new SlashCommandBuilder().setName('boletim').setDescription('Publica ou atualiza o painel de boletins de ocorrência V2.2')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addStringOption(o => o.setName('atualizar').setDescription('Link da mensagem antiga do painel para atualizar no mesmo lugar').setRequired(false)),
+  new SlashCommandBuilder().setName('boletim').setDescription('Envia o painel de boletins de ocorrência')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('consultar_bo').setDescription('Consulta BOs pelo ID de personagem (durante esta execução)')
-    .addStringOption(o => o.setName('id').setDescription('ID do personagem no RP').setRequired(true)),
-  new SlashCommandBuilder().setName('cetus_versao').setDescription('Mostra a versão do Cetus que está executando')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption(o => o.setName('id').setDescription('ID do personagem no RP').setRequired(true))
 ];
 
 const TIPOS_BO = { prisao: { titulo: 'Prisão B.O.', emoji: '🚓', cor: 0xc0392b }, apreensao: { titulo: 'Apreensão B.O.', emoji: '🚔', cor: 0x2f6fed }, multa: { titulo: 'Multa B.O.', emoji: '💰', cor: 0xf39c12 } };
 
-// Este layout usa seções de texto e botões reais do Discord Components V2.
-// A identificação V2.2 fica visível para detectar se a Discloud está rodando o ZIP atualizado.
 function cabecalho(i) {
-  const card = new ContainerBuilder().setAccentColor(0xb91c31)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      '## 🚔 POLÍCIA CIVIL\n# CENTRAL DE BOLETINS\n' +
-      '**CETUS • PAINEL OPERACIONAL V2.2**\n' +
-      'Registre, consulte e gerencie ocorrências em um só lugar.'
-    ))
-    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      '### 📝 01 • REGISTRAR OCORRÊNCIA\n' +
-      'Escolha o tipo de B.O. e complete o formulário. Você pode incluir policiais envolvidos e até **10 fotos ou vídeos**.'
-    ))
-    .addActionRowComponents(new (require('discord.js').ActionRowBuilder)().addComponents(
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:prisao').setLabel('Prisão').setEmoji('🚓').setStyle(ButtonStyle.Danger),
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:apreensao').setLabel('Apreensão').setEmoji('📦').setStyle(ButtonStyle.Secondary),
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:multa').setLabel('Multa').setEmoji('💰').setStyle(ButtonStyle.Secondary)
-    ))
-    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      '### 🔎 02 • CONSULTA E ADMINISTRAÇÃO\n' +
-      'Encontre ocorrências pelo ID, abra seus registros ou ajuste as permissões do sistema.'
-    ))
-    .addActionRowComponents(new (require('discord.js').ActionRowBuilder)().addComponents(
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:consultar').setLabel('Consultar').setEmoji('🔎').setStyle(ButtonStyle.Primary),
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:minhas').setLabel('Meus B.O.s').setEmoji('📁').setStyle(ButtonStyle.Secondary),
-      new (require('discord.js').ButtonBuilder)().setCustomId('bo:config').setLabel('Configurações').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
-    ))
-    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      '🔐 **Acesso:** membros autorizados pela corporação.\n' +
-      '-# CETUS V2.2 • Teste sem banco: configurações e índice de BOs são apagados após reiniciar.'
-    ));
-  return { flags: MessageFlags.IsComponentsV2, components: [card], allowedMentions: { parse: [] } };
-}
-
-// Apenas atualiza mensagens deste bot e que realmente sejam painéis de B.O.
-function analisarLinkPainel(i, valor) {
-  const link = String(valor || '').trim();
-  const match = link.match(/(?:https?:\/\/)?(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/(\d{17,22})\/(\d{17,22})\/(\d{17,22})(?:\/?(?:\?.*)?)?$/i);
-  if (!match) throw new Error('Cole o LINK completo da mensagem do painel: https://discord.com/channels/SERVIDOR/CANAL/MENSAGEM');
-  if (match[1] !== i.guildId) throw new Error('Esse link pertence a outro servidor.');
-  return { canalId: match[2], mensagemId: match[3] };
-}
-async function atualizarPainelAntigo(i, link) {
-  const { canalId, mensagemId } = analisarLinkPainel(i, link);
-  const canal = await i.guild.channels.fetch(canalId);
-  if (!canal?.messages?.fetch) throw new Error('O canal do painel não pode ser acessado pelo bot.');
-  const antigo = await canal.messages.fetch(mensagemId);
-  if (antigo.author?.id !== i.client.user.id) throw new Error('Só consigo editar uma mensagem enviada por este próprio bot.');
-  const jsonComponentes = JSON.stringify(antigo.components.map(c => c.toJSON?.() ?? c));
-  if (!jsonComponentes.includes('bo:novo:prisao') || !jsonComponentes.includes('bo:config')) {
-    throw new Error('A mensagem informada não parece ser um painel de B.O. do Cetus.');
-  }
-  const novo = comLogo(cabecalho(i), i.guild, i.client);
-  await antigo.edit({ ...novo, content: null, embeds: [] });
-  return antigo.url;
+  return caixa('🚔 | Boletim de Ocorrência',
+    'Sistema de registro e gerenciamento de ocorrências policiais.\n\nUse os botões abaixo para registrar um novo B.O. ou consultar os seus registros.',
+    0xc0392b,
+    [
+      [['bo:novo:prisao', 'Prisão', ButtonStyle.Danger, '🚓'], ['bo:novo:apreensao', 'Apreensão', ButtonStyle.Secondary, '🚔'], ['bo:novo:multa', 'Multa', ButtonStyle.Secondary, '💰']],
+      [['bo:consultar', 'Consultar', ButtonStyle.Secondary, '🔎'], ['bo:minhas', 'Minhas', ButtonStyle.Secondary, '📁'], ['bo:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]
+    ],
+    ['### 📝 Registrar ocorrência\nSelecione o tipo de boletim e preencha o formulário em modal V2. Você também pode marcar os policiais envolvidos e anexar até **10 imagens ou vídeos**.',
+     '### ℹ️ Observações\n• Somente membros com o cargo configurado podem registrar ocorrências.\n• Consulta e edição ficam disponíveis até o bot reiniciar (versão sem banco de dados).']
+  );
 }
 
 function painelConfig(c) {
@@ -798,7 +849,8 @@ function painelConfig(c) {
     `**Canal de publicação:** ${c.canalId ? `<#${c.canalId}>` : '❌ Não configurado'}\n` +
     `**Cargo da corporação:** ${c.cargoId ? `<@&${c.cargoId}>` : '❌ Não configurado'}\n\n` +
     'Estas escolhas são aplicadas imediatamente e esta janela é atualizada ao navegar. Sem banco de dados nesta versão de testes.',
-    [[botao('bo:config_canal', 'Definir canal'), botao('bo:config_cargo', 'Definir cargo')]], 0x8e44ad,
+    [[botao('bo:config_canal', 'Definir canal'), botao('bo:config_cargo', 'Definir cargo')],
+     [['diag:abrir:bo','Diagnóstico',ButtonStyle.Secondary,'🩺']]], 0x8e44ad,
     ['### Permissões\nApenas administradores alteram estas configurações.']);
 }
 function modalBO(bo = null, tipo = 'prisao') {
@@ -893,27 +945,18 @@ async function menuMinhas(i) {
   return i.reply(comLogo(card, i.guild, i.client));
 }
 async function handle(i) {
-  const isCmd = i.isChatInputCommand() && ['boletim','consultar_bo','cetus_versao'].includes(i.commandName);
+  const isCmd = i.isChatInputCommand() && ['boletim','consultar_bo'].includes(i.commandName);
   const isBtn = i.isButton() && i.customId.startsWith('bo:');
   const isSelect = (i.isChannelSelectMenu() || i.isRoleSelectMenu() || i.isStringSelectMenu()) && i.customId.startsWith('bo:');
   const isModal = i.isModalSubmit() && i.customId.startsWith('bo:');
   if (!(isCmd || isBtn || isSelect || isModal)) return false;
   try {
-    if (isCmd && i.commandName === 'cetus_versao') {
-      await responder(i, `✅ **Cetus ${CETUS_VERSAO}** está em execução. Layout: Central de Boletins V2.2.`);
-      return true;
-    }
     if (isCmd && i.commandName === 'boletim') {
       if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem publicar o painel.'); return true; }
-      const linkAntigo = i.options.getString('atualizar');
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      if (linkAntigo) {
-        const url = await atualizarPainelAntigo(i, linkAntigo);
-        await responder(i, `✅ Painel **V2.2** atualizado na mensagem existente: ${url}`);
-      } else {
-        const msg = await enviarV2(i.channel, cabecalho(i));
-        await responder(i, `✅ Novo painel **V2.2** enviado: ${msg.url}`);
-      }
+      const msg = await enviarV2(i.channel, cabecalho(i));
+      registrarPainelMensagem('boletim', i.guildId, msg);
+      await responder(i, `✅ Painel enviado: ${msg.url}`);
       return true;
     }
     if (isCmd && i.commandName === 'consultar_bo') {
@@ -927,6 +970,7 @@ async function handle(i) {
     }
     if (isBtn && i.customId === 'bo:config') {
       if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem configurar.'); return true; }
+      registrarPainelDoClique('boletim',i);
       await abrirConfig(i, painelConfig(cfg(i.guildId))); return true;
     }
     if (isBtn && ['bo:config_canal','bo:config_cargo'].includes(i.customId)) {
@@ -946,7 +990,8 @@ async function handle(i) {
       const c = cfg(i.guildId);
       if (i.customId === 'bo:selecionar_canal') c.canalId = i.values[0];
       else c.cargoId = i.values[0];
-      await atualizar(i, painelConfig(c)); return true;
+      await atualizar(i, painelConfig(c));
+      await sincronizarPaineis('boletim', i.guild, i.client, () => cabecalho(i)); return true;
     }
     if (isBtn && ['bo:novo:prisao', 'bo:novo:apreensao', 'bo:novo:multa'].includes(i.customId)) {
       if (!(await autorizado(i))) return true;
@@ -1024,8 +1069,132 @@ async function handle(i) {
     return true;
   } catch (e) { await erro(i, e); return true; }
 }
-module.exports = { comandos, handle };
+module.exports = { comandos, handle, getConfig:cfg, painelConfig, buildPanel:cabecalho,
+  registrarPainel:(id,msg)=>registrarPainelMensagem('boletim',id,msg) };
 
+};
+
+// ------ sistemas/diagnostico.js ------
+__cetusModuleFactories["sistemas/diagnostico"] = function(module, exports, require) {
+'use strict';
+const { SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
+const { painel, donoAdmin, responder, atualizar, comLogo } = require('./comum');
+const recrutamento = __cetusLoad('sistemas/recrutamento');
+const registro = __cetusLoad('sistemas/registro');
+const boletins = __cetusLoad('sistemas/ocorrencias');
+
+const comando = new SlashCommandBuilder().setName('diagnostico')
+  .setDescription('Confere as configurações, cargos e permissões do Cetus')
+  .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+  .addStringOption(o => o.setName('sistema').setDescription('Sistema para verificar')
+    .setRequired(false).addChoices(
+      { name: 'Todos', value: 'todos' },
+      { name: 'Recrutamento', value: 'rec' },
+      { name: 'Registro', value: 'reg' },
+      { name: 'Boletim de ocorrência', value: 'bo' }
+    ));
+
+function checarCargo(guild, me, id, nome) {
+  if (!id) return `⚠️ ${nome}: não configurado`;
+  const cargo = guild.roles.cache.get(id);
+  if (!cargo) return `❌ ${nome}: cargo não existe mais`;
+  if (cargo.managed) return `⚠️ ${nome}: cargo gerenciado por integração`;
+  const acima = me.roles.highest.comparePositionTo(cargo) > 0;
+  return `${acima ? '✅' : '❌'} ${nome}: ${acima ? 'hierarquia OK' : 'suba o cargo do bot acima de ' + cargo.name}`;
+}
+async function checarCanal(guild, me, id, nome, categoria = false) {
+  if (!id) return `⚠️ ${nome}: não configurado`;
+  const ch = await guild.channels.fetch(id).catch(() => null);
+  if (!ch) return `❌ ${nome}: canal não encontrado`;
+  if (categoria) return `${ch.type === 4 ? '✅' : '❌'} ${nome}: ${ch.type === 4 ? 'categoria válida' : 'canal não é uma categoria'}`;
+  if (!ch.isTextBased?.() || !ch.send) return `❌ ${nome}: canal não aceita mensagens`;
+  const p = ch.permissionsFor(me);
+  const exigidas = [
+    ['ver', PermissionsBitField.Flags.ViewChannel],
+    ['enviar', PermissionsBitField.Flags.SendMessages],
+    ['histórico', PermissionsBitField.Flags.ReadMessageHistory],
+    ['anexar', PermissionsBitField.Flags.AttachFiles]
+  ];
+  const faltas = exigidas.filter(([,bit]) => !p?.has(bit)).map(([texto]) => texto);
+  return faltas.length ? `❌ ${nome}: faltam permissões (${faltas.join(', ')})` : `✅ ${nome}: permissões OK`;
+}
+async function gerar(i, escolha) {
+  const guild = i.guild;
+  const me = await guild.members.fetchMe();
+  const perm = me.permissions;
+  const linhas = [];
+  const rec = recrutamento.getConfig(i.guildId);
+  const reg = registro.getConfig(i.guildId);
+  const bo = boletins.getConfig(i.guildId);
+  const incluir = x => escolha === 'todos' || escolha === x;
+  const local = [
+    ['Gerenciar cargos', PermissionsBitField.Flags.ManageRoles],
+    ['Gerenciar apelidos', PermissionsBitField.Flags.ManageNicknames],
+    ['Gerenciar canais', PermissionsBitField.Flags.ManageChannels]
+  ];
+  linhas.push('### 🤖 Permissões gerais do bot\n' + local.map(([nome, bit]) =>
+    `${perm.has(bit) ? '✅' : '❌'} ${nome}`).join('\n'));
+  if (incluir('rec')) {
+    const r = [];
+    r.push(await checarCanal(guild, me, rec.categoriaId, 'Categoria', true));
+    r.push(await checarCanal(guild, me, rec.relatorioId, 'Canal de relatórios'));
+    if (rec.anuncioId) r.push(await checarCanal(guild, me, rec.anuncioId, 'Canal de anúncios'));
+    else r.push('⚠️ Canal de anúncios: não configurado (opcional)');
+    r.push(checarCargo(guild, me, rec.cargoRecrutador, 'Cargo recrutador'));
+    for (const [n, id] of rec.cargosAprovar.entries()) r.push(checarCargo(guild, me, id, `Cargo a atribuir ${n + 1}`));
+    for (const [n, id] of rec.cargosRemover.entries()) r.push(checarCargo(guild, me, id, `Cargo a remover ${n + 1}`));
+    r.push(`ℹ️ Perguntas: ${rec.perguntas.length}/20 • ${Math.round(rec.tempoMs/1000)}s por pergunta`);
+    linhas.push('### 🟢 Recrutamento\n' + r.join('\n'));
+  }
+  if (incluir('reg')) {
+    const r = [await checarCanal(guild, me, reg.logId, 'Canal de LOG'),
+      checarCargo(guild, me, reg.cargoResponsavel, 'Responsável')];
+    for (const [n, id] of reg.cargosAtribuir.entries()) r.push(checarCargo(guild, me, id, `Cargo a atribuir ${n + 1}`));
+    for (const [n, id] of reg.cargosRemover.entries()) r.push(checarCargo(guild, me, id, `Cargo a remover ${n + 1}`));
+    if (reg.usarTurnos) {
+      for (const [t, id] of Object.entries(reg.turnos)) r.push(checarCargo(guild, me, id, `Turno ${t}`));
+    } else r.push('ℹ️ Turno / Equipe está desativado');
+    linhas.push('### 🔵 Registro\n' + r.join('\n'));
+  }
+  if (incluir('bo')) {
+    linhas.push('### 🔴 Boletim de ocorrência\n' + [
+      await checarCanal(guild, me, bo.canalId, 'Canal dos boletins'),
+      checarCargo(guild, me, bo.cargoId, 'Cargo da corporação')
+    ].join('\n'));
+  }
+  linhas.push('ℹ️ **Sem banco de dados:** configurações e índice de BOs deixam de existir após reiniciar o bot.\nEste diagnóstico não modifica nenhuma configuração.');
+  // Evita estourar o limite do Text Display, mesmo em servidores com muitos cargos.
+  const extras = linhas.map(linha => linha.slice(0, 3500));
+  const nome = { todos:'Todos os sistemas', rec:'Recrutamento', reg:'Registro', bo:'Boletim de ocorrência' }[escolha] || 'Todos os sistemas';
+  return painel('🩺 Diagnóstico do Cetus',
+    `**Sistema:** ${nome}\n**Servidor:** ${guild.name}\nConfira os itens com ❌ e ajuste o cargo/permissões do bot.`,
+    [[['diag:atualizar:'+escolha,'Verificar novamente',2,'🔄']],
+     [['diag:voltar:'+escolha, 'Voltar',2,'↩️']]], 0x5865f2, extras);
+}
+async function handle(i) {
+  const cmd = i.isChatInputCommand() && i.commandName === 'diagnostico';
+  const btn = i.isButton() && i.customId.startsWith('diag:');
+  if (!cmd && !btn) return false;
+  if (!donoAdmin(i)) { await responder(i, '❌ Somente administradores podem executar o diagnóstico.'); return true; }
+  const scope = cmd ? (i.options.getString('sistema') || 'todos') : (i.customId.split(':')[2] || 'todos');
+  if (btn && i.customId.startsWith('diag:voltar:')) {
+    const tela = scope === 'rec' ? recrutamento.menuConfig() :
+      scope === 'reg' ? registro.painelConfig(registro.getConfig(i.guildId)) :
+      scope === 'bo' ? boletins.painelConfig(boletins.getConfig(i.guildId)) : null;
+    if (tela) await atualizar(i, tela);
+    else await atualizar(i, painel('⚙️ Diagnóstico', 'Volte ao painel do sistema que deseja configurar.'));
+    return true;
+  }
+  if (cmd) await i.deferReply({ flags: MessageFlags.Ephemeral });
+  else if (i.message?.flags?.has?.(MessageFlags.Ephemeral)) await i.deferUpdate();
+  else await i.deferReply({ flags: MessageFlags.Ephemeral });
+  const tela = await gerar(i, ['rec', 'reg', 'bo'].includes(scope) ? scope : 'todos');
+  if (btn && i.message?.flags?.has?.(MessageFlags.Ephemeral))
+    await i.editReply(comLogo({ ...tela, flags: MessageFlags.IsComponentsV2 }, i.guild, i.client));
+  else await responder(i, tela, true);
+  return true;
+}
+module.exports = { comando, handle, gerar };
 };
 
 // ------ index.js ------
@@ -1038,9 +1207,9 @@ const {
 const recrutamento = __cetusLoad('sistemas/recrutamento');
 const registro = __cetusLoad('sistemas/registro');
 const ocorrencias = __cetusLoad('sistemas/ocorrencias');
-const modulos = [ocorrencias, registro, recrutamento];
-const { aviso, comLogo } = __cetusLoad('sistemas/comum');
-
+const diagnostico = __cetusLoad('sistemas/diagnostico');
+const modulos = [diagnostico, ocorrencias, registro, recrutamento];
+const { aviso, comLogo, painel, responder, donoAdmin } = __cetusLoad('sistemas/comum');
 const token = process.env.DISCORD_TOKEN?.trim();
 if (!token) {
   console.error('❌ DISCORD_TOKEN não definido. Configure no .env ou na hospedagem.');
@@ -1058,8 +1227,8 @@ const client = new Client({
 });
 client.on('error', e => console.error('Erro do cliente Discord:', e));
 client.once(Events.ClientReady, async ready => {
-  console.log(`🚔 CETUS V2.2.0-PAINEL-CORRIGIDO ONLINE: ${ready.user.tag}`);
-  const cmds = [...ocorrencias.comandos, registro.comando, recrutamento.comando].map(c=>c.toJSON());
+  console.log(`🤖 CETUS TESTE: ${ready.user.tag}`);
+  const cmds = [...ocorrencias.comandos, registro.comando, recrutamento.comando, diagnostico.comando].map(c=>c.toJSON());
   const rest = new REST({version:'10'}).setToken(token);
   const guildId = process.env.GUILD_ID?.trim();
   const appId = process.env.CLIENT_ID?.trim() || ready.user.id;
