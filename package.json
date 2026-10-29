@@ -1,18 +1,15 @@
 {
-  "name": "bot-recrutamento-teste",
-  "version": "1.0.0",
-  "description": "Bot de recrutamento e registro com V2 Forms",
+  "name": "cetus-bot-teste",
+  "version": "1.0.0-teste",
+  "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "check": "node --check index.js && node --check sistemas/comum.js && node --check sistemas/registro.js && node --check sistemas/recrutamento.js && node --check sistemas/ocorrencias.js"
   },
+  "engines": {"node": ">=22.12.0"},
   "dependencies": {
-    "@discordjs/rest": "^2.3.0",
-    "discord-api-types": "^0.37.70",
-    "discord.js": "^14.18.0",
-    "dotenv": "^16.4.5"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "discord.js": "14.25.1",
+    "dotenv": "^16.4.7"
   }
 }
