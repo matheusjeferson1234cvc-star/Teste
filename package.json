@@ -1,12 +1,12 @@
 {
-  "name": "cetus-bot-v2-gifs-animados-sem-banco",
-  "version": "2.6.0",
+  "name": "cetus-bot-v27-gifs-corrigidos",
+  "version": "2.7.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "check": "node --check index.js",
-    "test:offline": "node tests/smoke.js"
+    "test:offline": "node smoke.js"
   },
   "engines": {
     "node": ">=22.12.0"
