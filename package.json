@@ -1,6 +1,6 @@
 {
-  "name": "cetus-bot-v2-premium-teste",
-  "version": "1.1.0-teste-v2",
+  "name": "cetus-v2-2-painel-corrigido",
+  "version": "2.2.0",
   "private": true,
   "main": "index.js",
   "scripts": {

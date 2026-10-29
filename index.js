@@ -1,4 +1,4 @@
-// CETUS — versão de teste em um arquivo único. Sem Supabase, JSON, banco ou persistência.
+// CETUS — V2.2 PAINEL CORRIGIDO, teste em arquivo único, sem banco de dados.
 'use strict';
 const __cetusRequireReal = require;
 const __cetusModuleFactories = Object.create(null);
@@ -720,26 +720,77 @@ let contador = 0;
 const cfg = id => guildConfig(configuracoes, id, () => ({ canalId: null, cargoId: null }));
 const botao = (a, b) => [a, b, ButtonStyle.Secondary];
 
+const CETUS_VERSAO = '2.2.0-painel-corrigido';
 const comandos = [
-  new SlashCommandBuilder().setName('boletim').setDescription('Envia o painel de boletins de ocorrência')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('boletim').setDescription('Publica ou atualiza o painel de boletins de ocorrência V2.2')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption(o => o.setName('atualizar').setDescription('Link da mensagem antiga do painel para atualizar no mesmo lugar').setRequired(false)),
   new SlashCommandBuilder().setName('consultar_bo').setDescription('Consulta BOs pelo ID de personagem (durante esta execução)')
-    .addStringOption(o => o.setName('id').setDescription('ID do personagem no RP').setRequired(true))
+    .addStringOption(o => o.setName('id').setDescription('ID do personagem no RP').setRequired(true)),
+  new SlashCommandBuilder().setName('cetus_versao').setDescription('Mostra a versão do Cetus que está executando')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ];
 
 const TIPOS_BO = { prisao: { titulo: 'Prisão B.O.', emoji: '🚓', cor: 0xc0392b }, apreensao: { titulo: 'Apreensão B.O.', emoji: '🚔', cor: 0x2f6fed }, multa: { titulo: 'Multa B.O.', emoji: '💰', cor: 0xf39c12 } };
 
+// Este layout usa seções de texto e botões reais do Discord Components V2.
+// A identificação V2.2 fica visível para detectar se a Discloud está rodando o ZIP atualizado.
 function cabecalho(i) {
-  return caixa('🚔 | Boletim de Ocorrência',
-    'Sistema de registro e gerenciamento de ocorrências policiais.\n\nUse os botões abaixo para registrar um novo B.O. ou consultar os seus registros.',
-    0xc0392b,
-    [
-      [['bo:novo:prisao', 'Prisão', ButtonStyle.Danger, '🚓'], ['bo:novo:apreensao', 'Apreensão', ButtonStyle.Secondary, '🚔'], ['bo:novo:multa', 'Multa', ButtonStyle.Secondary, '💰']],
-      [['bo:consultar', 'Consultar', ButtonStyle.Secondary, '🔎'], ['bo:minhas', 'Minhas', ButtonStyle.Secondary, '📁'], ['bo:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]
-    ],
-    ['### 📝 Registrar ocorrência\nSelecione o tipo de boletim e preencha o formulário em modal V2. Você também pode marcar os policiais envolvidos e anexar até **10 imagens ou vídeos**.',
-     '### ℹ️ Observações\n• Somente membros com o cargo configurado podem registrar ocorrências.\n• Consulta e edição ficam disponíveis até o bot reiniciar (versão sem banco de dados).']
-  );
+  const card = new ContainerBuilder().setAccentColor(0xb91c31)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      '## 🚔 POLÍCIA CIVIL\n# CENTRAL DE BOLETINS\n' +
+      '**CETUS • PAINEL OPERACIONAL V2.2**\n' +
+      'Registre, consulte e gerencie ocorrências em um só lugar.'
+    ))
+    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      '### 📝 01 • REGISTRAR OCORRÊNCIA\n' +
+      'Escolha o tipo de B.O. e complete o formulário. Você pode incluir policiais envolvidos e até **10 fotos ou vídeos**.'
+    ))
+    .addActionRowComponents(new (require('discord.js').ActionRowBuilder)().addComponents(
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:prisao').setLabel('Prisão').setEmoji('🚓').setStyle(ButtonStyle.Danger),
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:apreensao').setLabel('Apreensão').setEmoji('📦').setStyle(ButtonStyle.Secondary),
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:novo:multa').setLabel('Multa').setEmoji('💰').setStyle(ButtonStyle.Secondary)
+    ))
+    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      '### 🔎 02 • CONSULTA E ADMINISTRAÇÃO\n' +
+      'Encontre ocorrências pelo ID, abra seus registros ou ajuste as permissões do sistema.'
+    ))
+    .addActionRowComponents(new (require('discord.js').ActionRowBuilder)().addComponents(
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:consultar').setLabel('Consultar').setEmoji('🔎').setStyle(ButtonStyle.Primary),
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:minhas').setLabel('Meus B.O.s').setEmoji('📁').setStyle(ButtonStyle.Secondary),
+      new (require('discord.js').ButtonBuilder)().setCustomId('bo:config').setLabel('Configurações').setEmoji('⚙️').setStyle(ButtonStyle.Secondary)
+    ))
+    .addSeparatorComponents(new (require('discord.js').SeparatorBuilder)().setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      '🔐 **Acesso:** membros autorizados pela corporação.\n' +
+      '-# CETUS V2.2 • Teste sem banco: configurações e índice de BOs são apagados após reiniciar.'
+    ));
+  return { flags: MessageFlags.IsComponentsV2, components: [card], allowedMentions: { parse: [] } };
+}
+
+// Apenas atualiza mensagens deste bot e que realmente sejam painéis de B.O.
+function analisarLinkPainel(i, valor) {
+  const link = String(valor || '').trim();
+  const match = link.match(/(?:https?:\/\/)?(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/(\d{17,22})\/(\d{17,22})\/(\d{17,22})(?:\/?(?:\?.*)?)?$/i);
+  if (!match) throw new Error('Cole o LINK completo da mensagem do painel: https://discord.com/channels/SERVIDOR/CANAL/MENSAGEM');
+  if (match[1] !== i.guildId) throw new Error('Esse link pertence a outro servidor.');
+  return { canalId: match[2], mensagemId: match[3] };
+}
+async function atualizarPainelAntigo(i, link) {
+  const { canalId, mensagemId } = analisarLinkPainel(i, link);
+  const canal = await i.guild.channels.fetch(canalId);
+  if (!canal?.messages?.fetch) throw new Error('O canal do painel não pode ser acessado pelo bot.');
+  const antigo = await canal.messages.fetch(mensagemId);
+  if (antigo.author?.id !== i.client.user.id) throw new Error('Só consigo editar uma mensagem enviada por este próprio bot.');
+  const jsonComponentes = JSON.stringify(antigo.components.map(c => c.toJSON?.() ?? c));
+  if (!jsonComponentes.includes('bo:novo:prisao') || !jsonComponentes.includes('bo:config')) {
+    throw new Error('A mensagem informada não parece ser um painel de B.O. do Cetus.');
+  }
+  const novo = comLogo(cabecalho(i), i.guild, i.client);
+  await antigo.edit({ ...novo, content: null, embeds: [] });
+  return antigo.url;
 }
 
 function painelConfig(c) {
@@ -776,14 +827,8 @@ function registroDaInteracao(i, tipo = 'prisao') {
   };
 }
 function corpoBO(b) {
-  const policiasMarcados = [...new Set(b.policiais || [])].map(id => `<@${id}>`).join(', ');
-  const envolvidos = [...new Set([b.autorId, ...(b.policiais || [])])].map(id => `<@${id}>`).join(' ');
+  const mencoes = [...new Set([b.autorId, ...b.policiais])].map(id => `<@${id}>`).join(' ');
   const info = TIPOS_BO[b.tipo] || TIPOS_BO.prisao;
-  const anexoInfo = b.anexosQtd ? `
-
-### 🔎 Evidência da ocorrência
-**Arquivos anexados:** ${b.anexosQtd}
-As imagens e/ou vídeos deste boletim estão logo abaixo.` : '';
   return (
     `# ${info.emoji} | ${info.titulo} ${b.codigo}
 
@@ -797,19 +842,16 @@ As imagens e/ou vídeos deste boletim estão logo abaixo.` : '';
 ` +
     `**Artigo / local / natureza:** ${b.local}
 ` +
-    `**Policiais envolvidos:** ${policiasMarcados || 'Nenhum informado'}
+    `**Policiais envolvidos:** ${mencoes || 'Nenhum informado'}
 
 ` +
     `**Descrição:**
-${b.relato}` +
-    `${anexoInfo}
+${b.relato}
 
 ` +
     `### 👮 Registro
 ` +
     `**Responsável:** <@${b.autorId}>
-` +
-    `**Envolvidos na ação:** ${envolvidos || `<@${b.autorId}>`}
 ` +
     `**Registrado em:** <t:${Math.floor(b.criadoEm / 1000)}:f>
 ` +
@@ -851,17 +893,27 @@ async function menuMinhas(i) {
   return i.reply(comLogo(card, i.guild, i.client));
 }
 async function handle(i) {
-  const isCmd = i.isChatInputCommand() && ['boletim','consultar_bo'].includes(i.commandName);
+  const isCmd = i.isChatInputCommand() && ['boletim','consultar_bo','cetus_versao'].includes(i.commandName);
   const isBtn = i.isButton() && i.customId.startsWith('bo:');
   const isSelect = (i.isChannelSelectMenu() || i.isRoleSelectMenu() || i.isStringSelectMenu()) && i.customId.startsWith('bo:');
   const isModal = i.isModalSubmit() && i.customId.startsWith('bo:');
   if (!(isCmd || isBtn || isSelect || isModal)) return false;
   try {
+    if (isCmd && i.commandName === 'cetus_versao') {
+      await responder(i, `✅ **Cetus ${CETUS_VERSAO}** está em execução. Layout: Central de Boletins V2.2.`);
+      return true;
+    }
     if (isCmd && i.commandName === 'boletim') {
       if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem publicar o painel.'); return true; }
+      const linkAntigo = i.options.getString('atualizar');
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const msg = await enviarV2(i.channel, cabecalho(i));
-      await responder(i, `✅ Painel enviado: ${msg.url}`);
+      if (linkAntigo) {
+        const url = await atualizarPainelAntigo(i, linkAntigo);
+        await responder(i, `✅ Painel **V2.2** atualizado na mensagem existente: ${url}`);
+      } else {
+        const msg = await enviarV2(i.channel, cabecalho(i));
+        await responder(i, `✅ Novo painel **V2.2** enviado: ${msg.url}`);
+      }
       return true;
     }
     if (isCmd && i.commandName === 'consultar_bo') {
@@ -950,10 +1002,9 @@ async function handle(i) {
       if (!podeEnviar(canal)) throw new Error('Canal dos BOs não existe ou o bot não pode enviar mensagens.');
       if (!editando) {
         contador++;
-        const files = envioArquivos(fotos);
         const b = { ...dados, codigo: `B.O. #${contador}`, guildId: i.guildId,
-          autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id,
-          anexosQtd: files.length };
+          autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id };
+        const files = envioArquivos(fotos);
         const payload = gerarPublicacao(b, files.map(f => f.name));
         const msg = await enviarV2(canal, { ...payload, ...(files.length ? { files } : {}) });
         b.mensagemId = msg.id; b.url = msg.url; b.arquivos = files.map(f => f.name);
@@ -961,7 +1012,7 @@ async function handle(i) {
         await responder(i, `✅ **${b.codigo}** publicado: ${msg.url}`);
       } else {
         const msg = await canal.messages.fetch(antigo.mensagemId);
-        const novo = { ...antigo, ...dados, editadoEm: Date.now(), anexosQtd: antigo.anexosQtd || antigo.arquivos?.length || 0 };
+        const novo = { ...antigo, ...dados, editadoEm: Date.now() };
         // Nenhum campo attachments -> Discord mantém todos os arquivos anexados.
         await msg.edit({ ...comLogo(gerarPublicacao(novo, antigo.arquivos), i.guild, i.client),
           attachments: [...msg.attachments.values()].map(a => ({ id: a.id })) });
@@ -1007,7 +1058,7 @@ const client = new Client({
 });
 client.on('error', e => console.error('Erro do cliente Discord:', e));
 client.once(Events.ClientReady, async ready => {
-  console.log(`🤖 CETUS TESTE: ${ready.user.tag}`);
+  console.log(`🚔 CETUS V2.2.0-PAINEL-CORRIGIDO ONLINE: ${ready.user.tag}`);
   const cmds = [...ocorrencias.comandos, registro.comando, recrutamento.comando].map(c=>c.toJSON());
   const rest = new REST({version:'10'}).setToken(token);
   const guildId = process.env.GUILD_ID?.trim();

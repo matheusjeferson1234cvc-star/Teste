@@ -1,38 +1,29 @@
-# CETUS — V2 com visual profissional (teste sem armazenamento)
+# Cetus V2.2 — Painel corrigido e atualização da mensagem antiga
 
-Esta versão reúne os sistemas de **Recrutamento, Registro sem tickets e Boletins de Ocorrência** em **um único `index.js`**. Não requer `sistemas/`, Supabase nem banco de dados.
+**Esta é uma versão de teste, sem banco de dados.** Recrutamento, Registro e Boletins de Ocorrência continuam em um único `index.js`.
 
-## Instalar na Discloud
+## Como comprovar que a nova versão está rodando
 
-1. Faça backup do seu bot atual e, se possível, teste primeiro em um servidor Discord de testes.
-2. Envie o ZIP sem modificar a estrutura. `index.js`, `package.json` e `discloud.config` estão na raiz.
-3. Configure **`DISCORD_TOKEN`** em local privado na hospedagem. Nunca publique o token no GitHub ou envie para outra pessoa. Se usar o `.env`, mantenha-o privado.
-4. Confira as permissões: Ver canais, Enviar mensagens, Ler histórico, Gerenciar cargos, Gerenciar apelidos, Gerenciar canais (tickets do Recrutamento) e Anexar arquivos. O cargo do bot deve ficar acima dos cargos atribuídos.
-5. Ative **Server Members Intent** e **Message Content Intent** no Developer Portal, necessários para cargos e respostas do Recrutamento.
-6. Reinicie e teste os comandos `/recrutamento`, `/registro`, `/boletim` e `/consultar_bo`.
+1. Envie este ZIP completo à Discloud, mantendo `index.js`, `package.json` e `discloud.config` na raiz. Não misture com arquivos antigos.
+2. Configure `DISCORD_TOKEN` de forma privada na hospedagem (nunca compartilhe o token). Reinicie a aplicação.
+3. Nos logs da Discloud, procure **`CETUS V2.2.0-PAINEL-CORRIGIDO ONLINE`**. Se não aparecer, ainda está executando o código antigo ou a aplicação falhou ao iniciar.
+4. No Discord, rode `/cetus_versao`. O retorno deve mostrar **2.2.0-painel-corrigido**.
 
-Use Node.js 22.12+ e `discord.js` 14.25.1. Em um computador, rode `npm install`, `npm run check` e `npm start`.
+## Atualizar o painel antigo sem apagá-lo
 
-## Interface e cores
+- No Discord, toque e segure a mensagem antiga do **painel de B.O.**, escolha **Copiar link da mensagem**.
+- Execute `/boletim` e preencha a opção **`atualizar`** com o link copiado.
+- O bot edita essa mensagem no mesmo canal (se tiver permissão). O texto deve mostrar **CENTRAL DE BOLETINS** e **CETUS • PAINEL OPERACIONAL V2.2**.
+- Se não preencher `atualizar`, `/boletim` envia um painel novo no canal atual.
+- O bot só aceita editar mensagens enviadas por ele mesmo e identificadas como painel de B.O.
 
-- **Recrutamento: verde**, com aprovação/reprovação, perguntas, temporizadores e ticket apenas nesse sistema.
-- **Registro: azul**, totalmente por modal, com nome do personagem, ID, seleção de turno e imagem de documento **fictício** opcional. O bot aplica o cargo de turno selecionado e remove cargos de outros turnos, se configurados.
-- **Boletins: vermelho**, com Prisão, Apreensão e Multa; formulário com marcação de policiais e até dez imagens/vídeos. A cor da publicação depende do tipo. Consulta pelo botão ou `/consultar_bo`. Apenas o autor pode editar seus próprios BOs.
-- **Configurações:** o primeiro clique abre uma resposta **privada**; os submenus, seletores e botões Voltar **atualizam a mesma mensagem**, sem abrir uma coleção de janelas. Formulários modais continuam abrindo normalmente quando necessário.
-- **Visual V2** para painéis, respostas de sucesso/erro, logs, aprovação e mensagens privadas.
-- **Ícone:** o bot tenta usar `CETUS_LOGO_URL` (opcional), depois o ícone do servidor e depois o avatar do bot.
+## Instalação e teste
 
-## IMPORTANTE: teste sem banco de dados
+- Node.js 22.12+; pacote usa `discord.js` 14.25.1. O ZIP deve ter `index.js`, `package.json`, `discloud.config`, `.env.example`, `.gitignore` e este arquivo na raiz.
+- Verifique as permissões necessárias de Ver canal, Enviar mensagens, Ler histórico, Gerenciar cargos e anexar arquivos. Para tickets de Recrutamento, Gerenciar canais. Ative os intents necessários no Developer Portal.
+- Comandos: `/cetus_versao`, `/boletim`, `/registro`, `/recrutamento`, `/consultar_bo`.
+- Não execute o bot em duas hospedagens com o mesmo token simultaneamente; isso dificulta saber qual versão responde.
 
-**Tudo que está em memória some ao reiniciar**: configurações, IDs dos painéis, perguntas, processos pendentes e índice dos boletins (consulta/edição). Os BOs já publicados e os arquivos que estão no Discord permanecem nas mensagens enquanto não forem excluídos, mas o bot não reconhecerá seu histórico para consulta/edição após reiniciar.
+## Limitações
 
-Na edição de BO, o bot preserva os anexos publicados, sem adicionar novos arquivos. O limite de tamanho de upload depende do Discord.
-
-## Testes que você deve fazer
-
-1. Recrutamento: Configurações → Visão geral → Voltar → Canais e cargos → Voltar; perguntas e tempo; aprovação/reprovação.
-2. Registro: Configurações → Cargos dos turnos → Voltar; escolha cada turno no modal e confira a atribuição de cargo e a foto no LOG.
-3. Boletim: Configurações → Definir canal/cargo → Voltar; registre um BO com imagens/vídeos fictícios; consulte pelo ID e edite o próprio boletim. Confira que os anexos permanecem no post.
-4. Reinicie apenas após confirmar os testes, pois **os dados de memória serão perdidos**.
-
-**Verificação realizada nesta preparação:** sintaxe do JavaScript e simulação local de navegação nos menus. Não foi possível executar o bot em uma conexão real ao Discord; se aparecer erro na Discloud, mande o trecho de logs.
+Esta versão **não se conecta ao Supabase nem armazena configurações localmente**. Configurações, processos de recrutamento em andamento e o índice de consulta e edição de BOs serão perdidos ao reiniciar. Mensagens e anexos já enviados ao Discord continuam no canal, a menos que sejam excluídos. O código passou por testes locais de sintaxe e estrutura, mas não foi testado em conexão real a um servidor Discord.
