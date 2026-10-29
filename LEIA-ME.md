@@ -1,48 +1,72 @@
-# CETUS V2.7 — Arquivos prontos para GitHub e Discloud
+# CETUS V3.1 — Bot modular sem pastas
 
-**Todos os arquivos devem ficar juntos na raiz do repositório, sem pasta `assets` e sem pasta `tests`.**
+Esta versão mantém os sistemas do CETUS separados em arquivos, mas TODOS OS ARQUIVOS FICAM NA RAIZ.
+Foi preparada para facilitar o envio individual pelo GitHub no celular.
 
-```text
-index.js
+## Estrutura
+
+```
+index.js                  <- liga todos os sistemas
+cetus-comum.js            <- Components V2, utilitários, GIFs e painéis
+cetus-recrutamento.js     <- tickets, perguntas, aprovação
+cetus-registro.js         <- modal, TAG, cargos e turnos
+cetus-ocorrencias.js      <- B.O., formulário, anexos, Consulta e edição
+cetus-diagnostico.js      <- /diagnostico
+cetus-gifs.js             <- /testar_gif e /corrigir_gifs
+cetus-recrutamento.gif    <- banner animado
+cetus-registro.gif        <- banner animado
+cetus-boletim.gif         <- banner animado
 package.json
-discloud.config
-cetus-recrutamento.gif
-cetus-registro.gif
-cetus-boletim.gif
-smoke.js
+smoke.js                  <- testes offline opcionais
 LEIA-ME.md
+.env.example              <- modelo de variáveis, SEM token
 .gitignore
-.env.example
+ discloud.config
 ```
 
-## Enviar pelo celular para o GitHub
+**Não crie a pasta `sistemas` nesta versão.** Os comandos `require('./cetus-X')` são escritos para buscar os arquivos ao lado do `index.js`. Não altere os nomes dos GIFs.
 
-1. Abra seu repositório e use **Add file → Upload files** (a interface pode mudar no celular).
-2. Selecione e envie os arquivos acima diretamente na raiz do repositório.
-3. Confirme o envio usando **Commit changes**.
-4. Confira se os três `cetus-*.gif` estão na mesma página que o `index.js`, sem estarem dentro de outra pasta.
-5. Atualize a hospedagem pela integração com GitHub, caso esteja configurada, ou envie o ZIP completo deste pacote na Discloud.
+## Como colocar no GitHub pelo celular
 
-Não coloque seu token do Discord no GitHub. Configure `DISCORD_TOKEN` de forma privada na hospedagem. O `.env.example` é apenas modelo e **não** contém token real. Se o GitHub no celular esconder arquivos com ponto (como `.gitignore`), são opcionais para iniciar o bot. Nunca suba um `.env` preenchido.
+1. Faça backup do código antigo. Não apague tudo antes de guardar uma cópia.
+2. Extraia o ZIP. Dentro dele estão todos os arquivos, **sem pastas**.
+3. No GitHub, abra o repositório e toque em **Add file → Upload files**.
+4. Selecione os arquivos extraídos diretamente, sem enviar o ZIP fechado.
+5. Confirme com **Commit changes**.
+6. Confira se `index.js`, `cetus-ocorrencias.js` e os 3 GIFs estão todos no mesmo nível da lista.
 
-## Teste e correção dos banners
+Se o navegador permitir enviar somente alguns por vez, faça vários commits. O GitHub suporta pastas, mas esta versão **não exige** envio de pastas.
 
-- `/testar_gif`: envia um GIF de teste em resposta privada para você verificar o movimento.
-- `/corrigir_gifs`: reenvia o GIF ao painel antigo. Informe o link da mensagem caso o painel não seja encontrado no canal atual.
-- `/diagnostico`: consulta canais, cargos e permissões.
-- Os arquivos agora são procurados ao lado do `index.js`; o caminho antigo `assets/` também é aceito para quem já possui uma instalação com pasta.
+Nunca publique um `.env` contendo `DISCORD_TOKEN`, senhas ou chaves. Configure `DISCORD_TOKEN` nas variáveis privadas da Discloud. `CLIENT_ID` e `GUILD_ID` podem ser definidos conforme seu ambiente.
 
-Um banner personalizado cadastrado como URL nos ajustes pode substituir o GIF padrão; apague a URL configurada para o GIF incluído aparecer automaticamente. Se o arquivo chegar ao Discord, mas ficar parado, confira as preferências de reprodução de GIFs do aplicativo.
+## Envio para Discloud
 
-## Arquivos e versões
+Você pode enviar o ZIP inteiro da V3.1 (os arquivos estão na raiz) ou configurar o deploy a partir do GitHub com os arquivos da raiz. Não deixe uma pasta `Cetus-V3.1` adicional envolvendo o `index.js` no deploy.
 
-O ZIP `Cetus-GitHub-ARQUIVOS-SOLTOS.zip` contém os arquivos da raiz, pronto para extrair e enviar individualmente ao GitHub. O mesmo ZIP também pode ser usado para instalar na Discloud. **Não envie o ZIP para dentro do próprio repositório como se fosse parte do projeto.**
+Comandos: `/recrutamento`, `/registro`, `/boletim`, `/consultar_bo`, `/diagnostico`, `/testar_gif` e `/corrigir_gifs`.
 
-Requer Node.js 22.12 ou mais recente. O código não contém banco de dados; as configurações em memória são perdidas ao reiniciar. Mensagens já enviadas ao Discord não são apagadas por isso.
+## Correção do botão Consultar
 
-### Verificação local (opcional)
+- **Consultar** abre o formulário para digitar o **ID do personagem do RP**.
+- Busca primeiro os B.O.s gerados desde que o bot foi iniciado e depois pesquisa mensagens anteriores publicadas pelo próprio bot no canal de B.O. configurado.
+- O histórico verifica até **500 mensagens recentes** (5 páginas de 100) do canal; ocorrências mais antigas podem não ser encontradas.
+- O bot precisa de permissão **Ver Canal** e **Ler Histórico de Mensagens** no canal de B.O.
+- Sem Supabase, as **configurações ainda são perdidas ao reiniciar**. Após reiniciar, configure novamente o canal e cargo de B.O. para a busca funcionar; os relatórios antigos continuam no Discord.
+- **Minhas** ainda mostra e edita apenas os boletins registrados desde a última inicialização. A busca histórica adicionada é para **Consultar** e `/consultar_bo`.
+
+## O que continua igual
+
+- Painel B.O. vermelho, com Prisão, Apreensão, Multa, Consultar, Configurações e Minhas.
+- Publicação organizada por envolvido, local, descrição, policiais e arquivos (até 10).
+- GIFs, registro por modal, recrutamento, diagnóstico e atualização automática dos painéis reconhecidos.
+- Crédito **🤖 Organizações • Roleplay | Desenvolvido por Cetus**.
+
+## Verificações locais
 
 ```
-node --check index.js
-node smoke.js
+npm install
+npm run check
+npm run test:offline
 ```
+
+Os testes offline não são uma confirmação de funcionamento em um servidor Discord real.

@@ -3,10 +3,11 @@
 // Não usa token, internet, conexão com Discord nem módulos instalados.
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const Module = require('node:module');
 const assert = require('node:assert/strict');
-const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
-const content = source.split('// ------ index.js ------')[0] + '\nmodule.exports = { load: __cetusLoad };';
+const ROOT = __dirname;
+const source = ['index.js',...fs.readdirSync(ROOT).filter(x=>/^cetus-.*\.js$/.test(x))]
+  .map(x=>fs.readFileSync(path.join(ROOT,x),'utf8')).join('\n');
 class Builder {
   constructor(kind) { this.data={...(kind?{type:kind}:{})}; this.parts=[]; this.items=[]; }
   setAccentColor(c) {this.data.accent_color=c;return this;}
@@ -65,16 +66,19 @@ const djs = new Proxy({
   ChannelType:{GuildText:0,GuildCategory:4},
   TextInputStyle:{Short:1,Paragraph:2}
 }, {get(obj,prop){if(prop in obj)return obj[prop];if(prop in types)return class extends Builder {constructor(){super(types[prop]);}};throw Error(`Unknown mocked ${String(prop)}`);}});
-const moduleMock={exports:{}};
-vm.runInNewContext(content,{require:(name)=>{if(name==='node:path'||name==='node:fs')return require(name);assert.equal(name,'discord.js');return djs;},__dirname:__dirname,module:moduleMock,console,
-  process:{env:{}} ,URL,Buffer,setTimeout,clearTimeout}, {filename:'index.js',timeout:1500});
-const load=moduleMock.exports.load;
-const comum=load('sistemas/comum');
-const rec=load('sistemas/recrutamento');
-const reg=load('sistemas/registro');
-const bo=load('sistemas/ocorrencias');
-const diag=load('sistemas/diagnostico');
-const gifs=load('sistemas/gifs');
+
+const origLoad = Module._load;
+Module._load = function(request,parent,isMain) {
+  if (request === 'discord.js') return djs;
+  return origLoad.apply(this,arguments);
+};
+const comum = require('./cetus-comum');
+const rec = require('./cetus-recrutamento');
+const reg = require('./cetus-registro');
+const bo = require('./cetus-ocorrencias');
+const diag = require('./cetus-diagnostico');
+const gifs = require('./cetus-gifs');
+Module._load = origLoad;
 function validarPainel(label,payload) {
   const result=comum.comLogo(payload,{iconURL:()=> 'https://example.com/icon.png'});
   assert.equal(result.flags & 32768,32768,`${label}: flag V2`);
@@ -89,7 +93,7 @@ function validarPainel(label,payload) {
   console.log('OK:',label, '|', result.components.length,'container(s),',total,'componentes');
 }
 for (const tipo of ['recrutamento','registro','boletim']) {
-  const gif = path.join(__dirname, `cetus-${tipo}.gif`);
+  const gif = path.join(ROOT, `cetus-${tipo}.gif`);
   assert.ok(fs.existsSync(gif), `GIF ${tipo} incluído no ZIP`);
   const arquivo = fs.readFileSync(gif);
   assert.equal(arquivo.subarray(0, 6).toString('ascii'),'GIF89a',`GIF ${tipo} válido`);
@@ -131,6 +135,26 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   console.log('OK: modal de registro com turno ativado/desativado');
   assert.match(source,/const BRAND = '🤖 Organizações • Roleplay \| Desenvolvido por Cetus';/);
   console.log('OK: crédito do desenvolvedor preservado');
+
+  // Consulta de B.O. deve recuperar relatórios do histórico após reinício do bot.
+  const registroHistorico = {
+    codigo:'B.O. #88', tipo:'prisao', personagemId:'149324', local:'Delegacia Central',
+    relato:'Teste RP', policiais:[], autorId:'policial', criadoEm: Date.now()
+  };
+  const publicadoHistorico=bo.buildReport(registroHistorico, []);
+  const mensagemAntiga = {
+    id:'msg-88',url:'https://discord.com/channels/history/historychan/msg-88',
+    author:{id:'bot'}, components:publicadoHistorico.components
+  };
+  assert.match(bo.textoDaMensagem(mensagemAntiga),/149324/);
+  assert.equal(bo.dadoDoBO(mensagemAntiga).personagemId,'149324');
+  bo.getConfig('history').canalId='historychan';
+  const consulta = await bo.buscarBOsPorId({ guildId:'history',client:{user:{id:'bot'}},
+    guild:{ channels:{ fetch:async()=>({messages:{fetch:async()=>new Map([['msg-88',mensagemAntiga]])}})} }
+  },'149324');
+  assert.equal(consulta.resultados.length,1,'deve achar BO publicado antes de reiniciar');
+  assert.equal(consulta.resultados[0].codigo,'B.O. #88');
+  console.log('OK: botão Consultar busca BOs no histórico do canal');
 
   // Navegação nas configurações: Voltar e seletores não criam novas janelas.
   const admin={id:'admin'};
@@ -254,6 +278,67 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   assert.equal(gifTeste.edited.flags, 32768, 'edição privada deve usar flag V2 sem Ephemeral');
   assert.equal(gifTeste.edited.files[0].name, 'cetus-registro.gif', 'teste envia GIF como anexo');
   console.log('OK: comando /testar_gif constrói resposta privada com anexo animado');
+
+
+  // Novo B.O. com campos separados e anexos também disponíveis ao editar.
+  const novoBO = bo.buildModal(null,'prisao').toJSON();
+  assert.equal(novoBO.components.length,5,'formulário do BO precisa ter cinco campos');
+  assert.match(JSON.stringify(novoBO),/Local da ocorrência/);
+  assert.match(JSON.stringify(novoBO),/Descrição detalhada/);
+  assert.match(JSON.stringify(novoBO),/Fotos e vídeos/);
+  const edicaoBO = bo.buildModal({codigo:'B.O. #1',tipo:'prisao',personagemId:'150',local:'Centro',relato:'Teste',policiais:[]}).toJSON();
+  assert.match(JSON.stringify(edicaoBO),/Adicionar arquivos/,'edição permite novos anexos');
+  const publicacaoBO = bo.buildReport({
+    codigo:'B.O. #1',tipo:'prisao',personagemId:'150',local:'Centro',relato:'Descrição de teste',
+    autorId:'100',policiais:['101'],criadoEm:Date.now()
+  },['imagem.png','video.mp4']);
+  validarPainel('BO com fotos e vídeos separados',publicacaoBO);
+  const publicado = JSON.stringify(comum.comLogo(publicacaoBO,{iconURL:()=>null}).components);
+  for (const label of ['Envolvido','Local da ocorrência','Descrição da ocorrência','Arquivos e evidências','Registro e equipe']) {
+    assert.ok(publicado.includes(label),`seção ausente: ${label}`);
+  }
+  assert.match(publicado,/attachment:\/\/imagem.png/);
+  assert.match(publicado,/attachment:\/\/video.mp4/);
+  console.log('OK: BO organizado por seções; edição aceita anexos');
+
+  // Exercita o envio de boletim e a edição que acrescenta arquivos sem remover os anteriores.
+  const cfgBO = bo.getConfig('gBO');
+  cfgBO.cargoId = 'policia';
+  cfgBO.canalId = 'canalBO';
+  const enviosBO = [];
+  const mensagemBO = {id:'msgBO1', url:'https://discord.com/channels/gBO/canalBO/msgBO1',
+    attachments:new Map([['file1',{id:'file1',name:'cetus_fake_0.png'}]]),
+    edit: async function(payload){this.ultimaEdicao=payload;return this;}};
+  const canalBO = {id:'canalBO',isTextBased:()=>true,send:async payload=>{enviosBO.push(payload);return mensagemBO;},
+    messages:{fetch:async()=>mensagemBO}};
+  const guildBO = {id:'gBO',ownerId:'admin',iconURL:()=>null,
+    channels:{fetch:async()=>canalBO},members:{fetch:async()=>({roles:{cache:new Map()}})}};
+  const interBO = (id,anexos,descricao) => ({
+    customId:id,guildId:'gBO',guild:guildBO,user:{id:'admin'},client:{user:{id:'bot',displayAvatarURL:()=>null}},
+    memberPermissions:{has:()=>true},inGuild:()=>true,
+    isChatInputCommand:()=>false,isButton:()=>false,isModalSubmit:()=>true,
+    isChannelSelectMenu:()=>false,isRoleSelectMenu:()=>false,isStringSelectMenu:()=>false,
+    fields:{
+      getSelectedUsers:()=>new Map(),
+      getTextInputValue:k=>({bo_id:'149324',bo_local:'Centro',bo_relato:descricao})[k],
+      getUploadedFiles:()=>new Map(anexos.map((a,j)=>[String(j),a]))
+    },
+    deferReply:async function(){this.deferred=true;},editReply:async function(payload){this.respondido=payload;}
+  });
+  const boNovo=interBO('bo:criar:prisao', [{name:'prova.png',contentType:'image/png',url:'https://example.com/prova.png'}],'Relato inicial');
+  await bo.handle(boNovo);
+  assert.equal(enviosBO.length,1,'publicação do BO criada');
+  assert.equal(enviosBO[0].files.length,1,'anexo inicial enviado');
+  assert.ok(boNovo.respondido,'confirmação do envio do BO');
+  // Durante o teste, o Discord teria retornado este anexo no objeto da mensagem.
+  mensagemBO.attachments = new Map([['file1',{id:'file1',name:enviosBO[0].files[0].name}]]);
+  const boEditar=interBO('bo:editar:B.O. #1',[{name:'video.mp4',contentType:'video/mp4',url:'https://example.com/video.mp4'}],'Relato atualizado');
+  await bo.handle(boEditar);
+  assert.ok(mensagemBO.ultimaEdicao,'BO editado');
+  assert.equal(mensagemBO.ultimaEdicao.files.length,1,'novo arquivo adicionado na edição');
+  assert.equal(mensagemBO.ultimaEdicao.attachments[0].id,'file1','anexo anterior preservado');
+  assert.match(JSON.stringify(mensagemBO.ultimaEdicao.components),/attachment:\/\/cetus_/);
+  console.log('OK: criação/edição de B.O. preserva anexos e aceita vídeo novo');
 
   assert.match(source,/setName\('diagnostico'\)/);
   assert.match(source,/setName\('testar_gif'\)/);
