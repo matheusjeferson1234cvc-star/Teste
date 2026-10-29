@@ -52,18 +52,89 @@ function botoes(itens) {
     return b;
   }));
 }
-function painel(titulo, descricao, linhas = [], cor = 0x3498db, extra = []) {
-  const c = new ContainerBuilder().setAccentColor(cor).addTextDisplayComponents(texto(`# ${titulo}\n\n${descricao}`));
-  if (extra.length) c.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  for (const e of extra) c.addTextDisplayComponents(texto(e));
+function caixa(titulo, descricao, cor = 0x3498db, linhas = [], extras = [], rodape = true) {
+  const c = new ContainerBuilder().setAccentColor(cor)
+    .addTextDisplayComponents(texto(`# ${titulo}
+
+${descricao}`));
+  for (const extra of extras) {
+    c.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    if (extra?.type === 'actionrow') c.addActionRowComponents(extra.value);
+    else c.addTextDisplayComponents(texto(String(extra)));
+  }
   for (const linha of linhas) {
     c.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
     c.addActionRowComponents(botoes(linha));
   }
-  c.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-  c.addTextDisplayComponents(texto(BRAND));
+  if (rodape) {
+    c.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+    c.addTextDisplayComponents(texto(BRAND));
+  }
   return { flags: V2, components: [c] };
 }
+function painel(titulo, descricao, linhas = [], cor = 0x3498db, extra = []) {
+  return caixa(titulo, descricao, cor, linhas, extra, true);
+}
+function aviso(msg, tipo = 'info') {
+  const bruto = limpar(typeof msg === 'string' ? msg : String(msg || ''));
+  let titulo = 'ℹ️ Informação';
+  let cor = 0x3498db;
+  if (bruto.startsWith('✅')) { titulo = '✅ Sucesso'; cor = 0x2ecc71; }
+  else if (bruto.startsWith('❌')) { titulo = '❌ Erro'; cor = 0xe74c3c; }
+  else if (bruto.startsWith('⚠️')) { titulo = '⚠️ Aviso'; cor = 0xf1c40f; }
+  if (tipo === 'error') { titulo = '❌ Erro'; cor = 0xe74c3c; }
+  if (tipo === 'warn') { titulo = '⚠️ Aviso'; cor = 0xf1c40f; }
+  if (tipo === 'success') { titulo = '✅ Sucesso'; cor = 0x2ecc71; }
+  const descricao = bruto.replace(/^[✅❌⚠️ℹ️]\s*/u, '');
+  return caixa(titulo, descricao || 'Sem detalhes.', cor);
+}
+async function replyMensagem(message, payload, tipo = 'info') {
+  return message.reply(comLogo(typeof payload === 'string' ? aviso(payload, tipo) : payload, message.guild, message.client));
+}
+// Aplica o ícone do servidor (ou avatar do bot) aos containers V2.
+// Utiliza Section/Thumbnail, sem depender de links externos.
+function comLogo(payload, guild, client = null) {
+  if (!payload || !payload.components?.length) return payload;
+  const logo = validoUrl(process.env.CETUS_LOGO_URL) ||
+    guild?.iconURL?.({ extension: 'png', size: 256 }) ||
+    client?.user?.displayAvatarURL?.({ extension: 'png', size: 256 });
+  if (!logo) return payload;
+  const componentes = payload.components.map(c => c?.toJSON?.() ?? c);
+  const container = componentes.find(c => c.type === 17);
+  if (!container?.components) return payload;
+  const idx = container.components.findIndex(c => c.type === 10 && c.content);
+  if (idx !== -1) {
+    const original = container.components[idx];
+    container.components[idx] = {
+      type: 9,
+      components: [{ type: 10, content: original.content }],
+      accessory: { type: 11, media: { url: logo } }
+    };
+  }
+  return { ...payload, components: componentes };
+}
+async function enviarV2(canal, payload) {
+  return canal.send(comLogo(payload, canal.guild, canal.client));
+}
+async function atualizar(i, payload) {
+  return i.update(comLogo(payload, i.guild, i.client));
+}
+function mensagemPrivada(i) {
+  const flags = i.message?.flags;
+  if (!flags) return false;
+  return typeof flags.has === 'function' ? flags.has(EPHEMERAL) : !!((flags.bitfield ?? flags) & EPHEMERAL);
+}
+// Clique público abre o painel privado. Cliques posteriores substituem a mesma mensagem.
+async function abrirConfig(i, payload) {
+  if (i.isButton?.() && mensagemPrivada(i)) return atualizar(i, payload);
+  return responder(i, payload, true);
+}
+// Modais abertos a partir da mensagem privada podem atualizá-la também.
+async function concluirConfig(i, payload) {
+  if (i.isModalSubmit?.() && mensagemPrivada(i)) return atualizar(i, payload);
+  return responder(i, payload, true);
+}
+
 function campo(id, rotulo, { value = '', max = 200, paragraph = false, required = true, placeholder } = {}) {
   const t = new TextInputBuilder().setCustomId(id)
     .setStyle(paragraph ? TextInputStyle.Paragraph : TextInputStyle.Short)
@@ -100,11 +171,18 @@ function envioArquivos(arr) {
   });
 }
 async function responder(i, msg, v2 = false) {
-  const data = typeof msg === 'string' ? { content: msg, flags: EPHEMERAL } :
-    { ...msg, flags: v2 ? (EPHEMERAL | V2) : (msg.flags ?? EPHEMERAL) };
-  if (i.deferred) return i.editReply(data);
-  if (i.replied) return i.followUp(data);
-  return i.reply(data);
+  let data;
+  if (typeof msg === 'string') {
+    data = { ...aviso(msg), flags: EPHEMERAL | V2 };
+  } else if (msg?.content && !msg?.components) {
+    data = { ...aviso(msg.content), ...Object.fromEntries(Object.entries(msg).filter(([k]) => k !== 'content' && k !== 'flags')), flags: (msg.flags ?? 0) | EPHEMERAL | V2 };
+  } else {
+    data = { ...msg, flags: ((msg?.flags ?? 0) | EPHEMERAL | V2) };
+  }
+  const decorado = comLogo(data, i.guild, i.client);
+  if (i.deferred) return i.editReply(decorado);
+  if (i.replied) return i.followUp(decorado);
+  return i.reply(decorado);
 }
 async function erro(i, e) {
   console.error('⚠️ CETUS:', e);
@@ -118,8 +196,9 @@ function guildConfig(map, guildId, fabrica) {
 }
 function podeEnviar(canal) { return canal && typeof canal.send === 'function' && canal.isTextBased(); }
 module.exports = {
-  BRAND, V2, EPHEMERAL, donoAdmin, limpar, validoUrl, texto, botoes, painel,
-  campo, upload, modal, arquivos, envioArquivos, responder, erro, guildConfig, podeEnviar
+  BRAND, V2, EPHEMERAL, donoAdmin, limpar, validoUrl, texto, botoes, caixa, painel, aviso, replyMensagem,
+  campo, upload, modal, arquivos, envioArquivos, responder, erro, guildConfig, podeEnviar,
+  comLogo, enviarV2, atualizar, abrirConfig, concluirConfig
 };
 
 };
@@ -132,7 +211,8 @@ const {
   PermissionsBitField, ChannelType, StringSelectMenuBuilder, ActionRowBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, validoUrl, painel, campo, modal, guildConfig, responder, erro, podeEnviar
+  donoAdmin, limpar, validoUrl, painel, aviso, replyMensagem, campo, modal, guildConfig, responder, erro, podeEnviar,
+  enviarV2, comLogo, atualizar, abrirConfig, concluirConfig
 } = require('./comum');
 const configs = new Map();
 const sessoes = new Map();
@@ -149,12 +229,12 @@ const comando = new SlashCommandBuilder().setName('recrutamento')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild);
 const permit = i => donoAdmin(i) || !!(cfg(i.guildId).cargoRecrutador && i.member?.roles?.cache?.has(cfg(i.guildId).cargoRecrutador));
 function painelPrincipal(c) {
-  const numero = c.perguntas.length;
-  const resultado = painel(c.titulo,c.descricao + '\n\n' +
-    `📝 **Perguntas:** ${numero}\n⏱️ **Tempo por pergunta:** ${c.tempoMs/1000} segundos\n⌛ **Tempo total:** 10 minutos\n` +
-    '📷 Envie somente a foto do RG **fictício do personagem** (não envie documento real).' +
-    (c.bannerUrl ? `\n🖼️ [Banner](${c.bannerUrl})` : ''),
-    [[['rec:iniciar','Formulário',ButtonStyle.Primary,'📝'],['rec:config','Configurações',ButtonStyle.Secondary,'⚙️']]],0x2ecc71);
+  const resultado = painel(c.titulo,
+    `${c.descricao}\n\n**🛡️ Processo seletivo da corporação**`,
+    [[['rec:iniciar','Preencher formulário',ButtonStyle.Primary,'📝'],
+      ['rec:config','Configurações',ButtonStyle.Secondary,'⚙️']]],0x27ae60,
+    [`### Etapas\n📝 Formulário e identificação do personagem\n⏱️ **${c.tempoMs / 1000} segundos** por pergunta\n⌛ **10 minutos** de tempo total\n🔎 Análise da gerência e resultado final`,
+     '📷 **Atenção:** envie somente imagens de documentos fictícios do personagem; não envie RG real.']);
   if (c.bannerUrl) resultado.components[0].addMediaGalleryComponents(
     new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
   );
@@ -165,12 +245,17 @@ async function sincronizarPainelPrincipal(i, c) {
   try {
     const canal=await i.guild.channels.fetch(c.painelCanal);
     const msg=await canal.messages.fetch(c.painelMensagem);
-    await msg.edit(painelPrincipal(c));
+    await msg.edit(comLogo(painelPrincipal(c), i.guild, i.client));
   } catch (e) { console.warn('Recrutamento: falha ao atualizar painel:',e.message); }
 }
 function menuConfig() {
-  return painel('⚙️ Configuração do Recrutamento','Gerencie canais, cargos, perguntas e visual.',
-    [[['rec:status','Status'],['rec:seletores','Canais e cargos'],['rec:perguntas','Perguntas e tempo'],['rec:visual','Visual e textos']]],0x3498db);
+  return painel('⚙️ Central de Configurações | Recrutamento',
+    'Todas as opções ficam nesta janela privada. Navegue pelos botões e use **Voltar** para retornar.',
+    [[['rec:status','Visão geral',ButtonStyle.Primary,'📊'],
+      ['rec:seletores','Canais e cargos',ButtonStyle.Secondary,'🛠️'],
+      ['rec:perguntas','Perguntas',ButtonStyle.Secondary,'❓'],
+      ['rec:visual','Personalizar',ButtonStyle.Secondary,'🎨']]],0x27ae60,
+    ['### Administração\n• Canais, hierarquia e equipe\n• Perguntas e cronômetro\n• Aparência e banners do painel']);
 }
 function nomeCargo(id){return id?`<@&${id}>`:'Não definido';}
 function status(c) {
@@ -220,13 +305,13 @@ function menuPerguntas(c) {
       {label:'3 minutos',value:'180000'},{label:'5 minutos',value:'300000'}
     ]}]},
     {type:1,components:[{type:2,style:2,custom_id:'rec:config',label:'Voltar'}]});
-  return {flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x3498db,components}]};
+  return {flags:MessageFlags.IsComponentsV2,components:[{type:17,accent_color:0x3498db,components:componentes}]};
 }
 async function sincronizar(canal, messageId, builder) {
   try{if(!canal || !messageId) return; const msg=await canal.messages.fetch(messageId);await msg.edit(builder());}catch(e){console.warn('Não foi possível atualizar painel:',e.message);}
 }
 async function mensagemTicket(canal, titulo, desc, cor=0x3498db) {
-  return canal.send(painel(titulo,desc,[],cor));
+  return enviarV2(canal, painel(titulo,desc,[],cor));
 }
 function encerrar(sessao, conteudo, ms=5000) {
   if(sessao.fechando) return;
@@ -264,9 +349,9 @@ async function finalizar(sessao){
   conteudo+=sessao.respostas.map((r,ind)=>`**${ind+1}. ${limpar(r.pergunta,120)}**\n${limpar(r.resposta,500)}`).join('\n\n');
   const partes=[];while(conteudo.length){partes.push(conteudo.slice(0,3400));conteudo=conteudo.slice(3400);}
   // Publicação em blocos, caso perguntas e respostas somem mais que 4 mil caracteres.
-  for(let j=0;j<partes.length;j++) await canal.send(painel(j===0?'📋 Candidatura':'📋 Continuação',partes[j],[],0x3498db));
+  for(let j=0;j<partes.length;j++) await enviarV2(canal, painel(j===0?'📋 Candidatura':'📋 Continuação',partes[j],[],0x3498db));
   const aviso = (sessao.rg ? `📷 **RG fictício do personagem:** ${sessao.rg}\n` : '📷 **RG:** não enviado\n');
-  await canal.send(painel('🔎 Avaliar candidatura',aviso+`Candidato <@${sessao.userId}>\nPersonagem ${sessao.nome}`,
+  await enviarV2(canal, painel('🔎 Avaliar candidatura',aviso+`Candidato <@${sessao.userId}>\nPersonagem ${sessao.nome}`,
     [[[`rec:aprovar:${sessao.userId}`,'Aprovar',ButtonStyle.Success],[`rec:reprovar:${sessao.userId}`,'Reprovar',ButtonStyle.Danger]]],0x3498db));
   pendentes.add(`${sessao.guildId}:${sessao.userId}`);
   encerrar(sessao,'Formulário enviado para avaliação.');
@@ -299,11 +384,11 @@ async function handleMessage(m) {
   if(s.step===0){
     const a=m.attachments.first();
     if(!a || !a.contentType?.startsWith('image/')){
-      await m.reply('⚠️ Envie uma imagem do RG **fictício do personagem** (ou aguarde o tempo expirar).');return;
+      await replyMensagem(m, '⚠️ Envie uma imagem do RG **fictício do personagem** (ou aguarde o tempo expirar).');return;
     }
     s.rg=a.url;
   }else {
-    if(!m.content.trim()) {await m.reply('⚠️ Responda com texto.');return;}
+    if(!m.content.trim()) {await replyMensagem(m, '⚠️ Responda com texto.');return;}
     s.respostas.push({pergunta:s.perguntas[s.step-1], resposta:m.content.slice(0,1500)});
   }
   s.step++;
@@ -320,9 +405,9 @@ async function handle(i){
     if(cmd){
       if(!donoAdmin(i)){await responder(i,'❌ Apenas administradores podem publicar painel.');return true;}
       await i.deferReply({flags:MessageFlags.Ephemeral});
-      const msg=await i.channel.send(painelPrincipal(c));
+      const msg=await enviarV2(i.channel, painelPrincipal(c));
       c.painelCanal=msg.channelId;c.painelMensagem=msg.id;
-      await i.editReply(`✅ Painel publicado: ${msg.url}`);return true;
+      await responder(i, `✅ Painel publicado: ${msg.url}`);return true;
     }
     if(button&&i.customId==='rec:iniciar'){
       await i.showModal(modal('rec:form','Iniciar Recrutamento',[
@@ -332,7 +417,7 @@ async function handle(i){
     if(m&&i.customId==='rec:form'){
       await i.deferReply({flags:MessageFlags.Ephemeral});
       const canal=await criarTicket(i,limpar(i.fields.getTextInputValue('rec_nome'),120));
-      await i.editReply(`✅ Ticket de recrutamento criado: ${canal}`);return true;
+      await responder(i, `✅ Ticket de recrutamento criado: ${canal}`);return true;
     }
     if(button&&(i.customId.startsWith('rec:aprovar:')||i.customId.startsWith('rec:reprovar:'))){
       if(!permit(i)){await responder(i,'❌ Você não é recrutador.');return true;}
@@ -346,21 +431,22 @@ async function handle(i){
         if(c.cargosAprovar.length)await member.roles.add(c.cargosAprovar);
         if(c.cargosRemover.length)await member.roles.remove(c.cargosRemover);
       }
-      await i.editReply(painel(aprovado?'✅ Candidatura aprovada':'❌ Candidatura reprovada',
-        `Candidato <@${userId}>\nAnalisado por <@${i.user.id}>`,[],aprovado?0x2ecc71:0xe74c3c));
+      await i.editReply(comLogo(painel(aprovado?'✅ Candidatura aprovada':'❌ Candidatura reprovada',
+        `Candidato <@${userId}>\nAnalisado por <@${i.user.id}>`,[],aprovado?0x2ecc71:0xe74c3c), i.guild, i.client));
       pendentes.delete(key);
-      if(member)member.send(`Sua candidatura no servidor **${i.guild.name}** foi ${aprovado?'APROVADA ✅':'REPROVADA ❌'}.`).catch(()=>null);
+      if(member)member.send(comLogo(painel(aprovado?'✅ Recrutamento aprovado':'❌ Recrutamento reprovado', `Servidor: **${i.guild.name}**
+Situação: ${aprovado?'Aprovado ✅':'Reprovado ❌'}`, [], aprovado?0x2ecc71:0xe74c3c), i.guild, i.client)).catch(()=>null);
       if(aprovado&&c.anuncioId){const canal=await i.guild.channels.fetch(c.anuncioId).catch(()=>null);
-        if(podeEnviar(canal))await canal.send(painel('✅ Recrutamento Aprovado',
+        if(podeEnviar(canal))await enviarV2(canal, painel('✅ Recrutamento Aprovado',
           `Parabéns <@${userId}>!\nInstrutor: <@${i.user.id}>`+(c.bannerAprovadoUrl?`\n[Banner de aprovação](${c.bannerAprovadoUrl})`:''),[],0x2ecc71));}
       return true;
     }
     if(!donoAdmin(i)){await responder(i,'❌ Apenas administradores podem configurar.');return true;}
     if(button){
-      if(i.customId==='rec:config'){await responder(i,menuConfig(),true);return true;}
-      if(i.customId==='rec:status'){await i.update(status(c));return true;}
-      if(i.customId==='rec:seletores'){await i.update(seletores());return true;}
-      if(i.customId==='rec:perguntas'){await i.update(menuPerguntas(c));return true;}
+      if(i.customId==='rec:config'){await abrirConfig(i,menuConfig());return true;}
+      if(i.customId==='rec:status'){await atualizar(i, status(c));return true;}
+      if(i.customId==='rec:seletores'){await atualizar(i, seletores());return true;}
+      if(i.customId==='rec:perguntas'){await atualizar(i, menuPerguntas(c));return true;}
       if(i.customId==='rec:visual'){
         await i.showModal(modal('rec:edit_visual','Visual do Recrutamento',[
           campo('rec_titulo','Título',{value:c.titulo,max:90}),
@@ -374,12 +460,12 @@ async function handle(i){
         await i.showModal(modal('rec:adicionar','Adicionar pergunta',[
           campo('rec_pergunta','Pergunta',{max:250,paragraph:true})]));return true;
       }
-      if(i.customId==='rec:pop'){c.perguntas.pop();await sincronizarPainelPrincipal(i,c);await i.update(menuPerguntas(c));return true;}
+      if(i.customId==='rec:pop'){c.perguntas.pop();await sincronizarPainelPrincipal(i,c);await atualizar(i, menuPerguntas(c));return true;}
       if(i.customId==='rec:escolher_rem'){
         if(!c.perguntas.length){await responder(i,'Nenhuma pergunta para remover.');return true;}
         const menu=new StringSelectMenuBuilder().setCustomId('rec:s_remover_pergunta')
           .setPlaceholder('Escolha a pergunta a remover').addOptions(c.perguntas.map((p,k)=>({value:String(k),label:`${k+1}. ${p}`.slice(0,100)})));
-        await i.update({ flags:MessageFlags.IsComponentsV2,components:[{type:17,components:[
+        await atualizar(i, { flags:MessageFlags.IsComponentsV2,components:[{type:17,components:[
           {type:10,content:'# Remover pergunta'},
           {type:1,components:[menu.toJSON()]},
           {type:1,components:[{type:2,style:2,custom_id:'rec:perguntas',label:'Voltar'}]}
@@ -395,10 +481,10 @@ async function handle(i){
         case 'rec:s_aprovar':c.cargosAprovar=value;break;
         case 'rec:s_remover':c.cargosRemover=value;break;
         case 'rec:s_recrutador':c.cargoRecrutador=value[0];break;
-        case 'rec:s_tempo':c.tempoMs=Number(value[0]);await sincronizarPainelPrincipal(i,c);await i.update(menuPerguntas(c));return true;
-        case 'rec:s_remover_pergunta':c.perguntas.splice(Number(value[0]),1);await i.update(menuPerguntas(c));return true;
+        case 'rec:s_tempo':c.tempoMs=Number(value[0]);await sincronizarPainelPrincipal(i,c);await atualizar(i, menuPerguntas(c));return true;
+        case 'rec:s_remover_pergunta':c.perguntas.splice(Number(value[0]),1);await atualizar(i, menuPerguntas(c));return true;
       }
-      await i.update(seletores());return true;
+      await atualizar(i, seletores());return true;
     }
     if(m&&i.customId==='rec:edit_visual'){
       c.titulo=limpar(i.fields.getTextInputValue('rec_titulo'),90);
@@ -406,13 +492,13 @@ async function handle(i){
       c.bannerUrl=validoUrl(i.fields.getTextInputValue('rec_banner'));
       c.bannerAprovadoUrl=validoUrl(i.fields.getTextInputValue('rec_banner_aprovado'));
       await sincronizarPainelPrincipal(i,c);
-      await responder(i,'✅ Visual editado nesta sessão e aplicado ao painel.');return true;
+      await concluirConfig(i, menuConfig());return true;
     }
     if(m&&i.customId==='rec:adicionar'){
       if(c.perguntas.length>=20){await responder(i,'❌ Limite atingido.');return true;}
       c.perguntas.push(limpar(i.fields.getTextInputValue('rec_pergunta'),250));
       await sincronizarPainelPrincipal(i,c);
-      await responder(i,'✅ Pergunta adicionada.');return true;
+      await concluirConfig(i, menuPerguntas(c));return true;
     }
     return true;
   }catch(e){await erro(i,e);return true;}
@@ -429,8 +515,8 @@ const {
   StringSelectMenuBuilder, LabelBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, validoUrl, painel, campo, upload, modal, arquivos, envioArquivos,
-  responder, erro, guildConfig, podeEnviar
+  donoAdmin, limpar, validoUrl, painel, aviso, campo, upload, modal, arquivos, envioArquivos,
+  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig, concluirConfig
 } = require('./comum');
 const configs = new Map();
 const novo = () => ({ logId: null, cargoResponsavel: null, cargosAtribuir: [], cargosRemover: [],
@@ -446,7 +532,7 @@ function painelRegistro(c) {
     '📝 Clique em **Registre-se** e preencha nome, ID e turno.\n📸 Você pode anexar a imagem do RG **do personagem do jogo** (não envie documentos reais).\n✅ O bot aplicará seus cargos e apelido. **Não cria ticket.**' +
     (c.bannerUrl ? `\n\n🖼️ [Banner do Registro](${c.bannerUrl})` : ''),
     [[['reg:iniciar', 'Registre-se', ButtonStyle.Primary, '📝'],
-      ['reg:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]], 0x2ecc71);
+      ['reg:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]], 0x2980b9);
   if (c.bannerUrl) resultado.components[0].addMediaGalleryComponents(
     new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
   );
@@ -457,7 +543,7 @@ async function sincronizarPainel(i, c) {
   try {
     const canal = await i.guild.channels.fetch(c.painelCanal);
     const msg = await canal.messages.fetch(c.painelMensagem);
-    await msg.edit(painelRegistro(c));
+    await msg.edit(comLogo(painelRegistro(c), i.guild, i.client));
   } catch (e) { console.warn('Registro: painel não pôde ser atualizado:', e.message); }
 }
 function status(c) {
@@ -468,7 +554,7 @@ function status(c) {
     `🗑️ **Cargos remover:** ${lista(c.cargosRemover)}\n` +
     `🏷️ **TAG de nome:** ${c.tag || '(nenhuma)'}\n\n` +
     Object.entries(nomes).map(([k, nome]) => `${nome}: ${c.turnos[k] ? `<@&${c.turnos[k]}>` : 'Não definido'}`).join('\n');
-  return painel('⚙️ Configurações do Registro', txt,
+  return painel('⚙️ Configurações do Registro', txt + '\n\n**Gerencie todas as seções nesta mesma janela.**', 
     [[['reg:config_geral','Canais e cargos',ButtonStyle.Primary],
       ['reg:config_turnos','Cargos dos turnos'],['reg:config_visual','TAG e painel']]], 0x3498db);
 }
@@ -539,15 +625,20 @@ async function executarRegistro(i) {
         // LOG não expõe documentos reais. RG é do personagem, não um documento pessoal.
         const files = envioArquivos(foto);
         if (files.length) {
-          await canal.send({ content: texto, files, allowedMentions: {parse: []} });
+          const payload = painel('📝 Registro efetuado', texto, [], 0x2ecc71);
+          payload.files = files;
+          payload.allowedMentions = { parse: [] };
+          payload.components[0].addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(...files.map(f => new MediaGalleryItemBuilder().setURL(`attachment://${f.name}`)))
+          );
+          await enviarV2(canal, payload);
         } else {
-          await canal.send(painel('📝 Registro efetuado',texto,[],0x2ecc71));
+          await enviarV2(canal, painel('📝 Registro efetuado',texto,[],0x2ecc71));
         }
       } catch(e) { falhas.push('envio do LOG'); console.error(e); }
     }
   }
-  await i.editReply(falhas.length ? `⚠️ Registro processado, mas houve falha em: ${falhas.join(', ')}. Verifique a hierarquia dos cargos e as permissões do bot.` :
-    `✅ Registro concluído! **${nome} | ${id}** — turno **${nomes[turno]}**. Cargos e apelido aplicados.`);
+  await responder(i, falhas.length ? `⚠️ Registro processado, mas houve falha em: ${falhas.join(', ')}. Verifique a hierarquia dos cargos e as permissões do bot.` : `✅ Registro concluído! **${nome} | ${id}** — turno **${nomes[turno]}**. Cargos e apelido aplicados.`);
 }
 async function handle(i) {
   const cmd = i.isChatInputCommand() && i.commandName === 'registro';
@@ -560,18 +651,18 @@ async function handle(i) {
       if (!donoAdmin(i)) {await responder(i,'❌ Apenas administradores podem publicar o painel.');return true;}
       await i.deferReply({flags:MessageFlags.Ephemeral});
       const c = cfg(i.guildId);
-      const mensagem = await i.channel.send(painelRegistro(c));
+      const mensagem = await enviarV2(i.channel, painelRegistro(c));
       c.painelCanal = mensagem.channelId; c.painelMensagem = mensagem.id;
-      await i.editReply(`✅ Painel enviado: ${mensagem.url}`);return true;
+      await responder(i, `✅ Painel enviado: ${mensagem.url}`);return true;
     }
     if (button && i.customId === 'reg:iniciar') { await i.showModal(modalRegistro()); return true; }
     if (m && i.customId==='reg:form') {await executarRegistro(i);return true;}
     if (!donoAdmin(i)) {await responder(i,'❌ Apenas administradores alteram configurações.');return true;}
     const c=cfg(i.guildId);
     if (button) {
-      if (i.customId==='reg:config') { await responder(i,status(c),true);return true; }
-      if (i.customId==='reg:config_geral') {await i.update(painelGeral());return true;}
-      if (i.customId==='reg:config_turnos') {await i.update(painelTurnos());return true;}
+      if (i.customId==='reg:config') { await abrirConfig(i,status(c));return true; }
+      if (i.customId==='reg:config_geral') {await atualizar(i, painelGeral());return true;}
+      if (i.customId==='reg:config_turnos') {await atualizar(i, painelTurnos());return true;}
       if (i.customId==='reg:config_visual') {
         await i.showModal(modal('reg:visual','Personalizar Registro',[
           campo('reg_tag','TAG do apelido (opcional)',{value:c.tag,max:12,required:false}),
@@ -593,7 +684,7 @@ async function handle(i) {
           if (Object.hasOwn(c.turnos,turno)) c.turnos[turno]=v[0];
         }
       }
-      await i.update(i.customId.startsWith('reg:s_turno_') ? painelTurnos() : painelGeral()); return true;
+      await atualizar(i, i.customId.startsWith('reg:s_turno_') ? painelTurnos() : painelGeral()); return true;
     }
     if (m && i.customId==='reg:visual') {
       c.tag=limpar(i.fields.getTextInputValue('reg_tag'),12);
@@ -601,7 +692,7 @@ async function handle(i) {
       c.descricao=limpar(i.fields.getTextInputValue('reg_desc'),800);
       c.bannerUrl=validoUrl(i.fields.getTextInputValue('reg_banner'));
       await sincronizarPainel(i, c);
-      await responder(i,'✅ Personalização aplicada ao painel e salva nesta sessão do bot.');return true;
+      await concluirConfig(i, status(c));return true;
     }
     return true;
   } catch(e) {await erro(i,e);return true;}
@@ -619,8 +710,8 @@ const {
   TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, painel, campo, upload, modal, arquivos, envioArquivos,
-  responder, erro, guildConfig, podeEnviar
+  donoAdmin, limpar, painel, caixa, aviso, campo, upload, modal, arquivos, envioArquivos,
+  responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig
 } = require('./comum');
 
 const configuracoes = new Map();
@@ -636,36 +727,48 @@ const comandos = [
     .addStringOption(o => o.setName('id').setDescription('ID do personagem no RP').setRequired(true))
 ];
 
+const TIPOS_BO = { prisao: { titulo: 'Prisão B.O.', emoji: '🚓', cor: 0xc0392b }, apreensao: { titulo: 'Apreensão B.O.', emoji: '🚔', cor: 0x2f6fed }, multa: { titulo: 'Multa B.O.', emoji: '💰', cor: 0xf39c12 } };
+
 function cabecalho(i) {
-  return painel('🚔 │ Central de Boletins de Ocorrência',
-    'Registre ocorrências de RP, marque policiais envolvidos e inclua até **10 fotos ou vídeos**.\n\n**Minhas Ocorrências:** edite somente os boletins que você registrou.',
-    [[['bo:novo', 'Registrar Ocorrência', ButtonStyle.Primary, '📝'],
-      ['bo:minhas', 'Minhas Ocorrências', ButtonStyle.Secondary, '📁'],
-      ['bo:config', 'Configurar', ButtonStyle.Secondary, '⚙️']]], 0x2f6fed);
+  return caixa('🚔 | Boletim de Ocorrência',
+    'Sistema de registro e gerenciamento de ocorrências policiais.\n\nUse os botões abaixo para registrar um novo B.O. ou consultar os seus registros.',
+    0xc0392b,
+    [
+      [['bo:novo:prisao', 'Prisão', ButtonStyle.Danger, '🚓'], ['bo:novo:apreensao', 'Apreensão', ButtonStyle.Secondary, '🚔'], ['bo:novo:multa', 'Multa', ButtonStyle.Secondary, '💰']],
+      [['bo:consultar', 'Consultar', ButtonStyle.Secondary, '🔎'], ['bo:minhas', 'Minhas', ButtonStyle.Secondary, '📁'], ['bo:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]
+    ],
+    ['### 📝 Registrar ocorrência\nSelecione o tipo de boletim e preencha o formulário em modal V2. Você também pode marcar os policiais envolvidos e anexar até **10 imagens ou vídeos**.',
+     '### ℹ️ Observações\n• Somente membros com o cargo configurado podem registrar ocorrências.\n• Consulta e edição ficam disponíveis até o bot reiniciar (versão sem banco de dados).']
+  );
 }
+
 function painelConfig(c) {
   return painel('⚙️ │ Configurar BOs',
     `**Canal de publicação:** ${c.canalId ? `<#${c.canalId}>` : '❌ Não configurado'}\n` +
     `**Cargo da corporação:** ${c.cargoId ? `<@&${c.cargoId}>` : '❌ Não configurado'}\n\n` +
-    'Somente administradores configuram. A configuração é temporária nesta versão.',
-    [[botao('bo:config_canal', 'Selecionar canal'), botao('bo:config_cargo', 'Selecionar cargo')]], 0x3498db);
+    'Estas escolhas são aplicadas imediatamente e esta janela é atualizada ao navegar. Sem banco de dados nesta versão de testes.',
+    [[botao('bo:config_canal', 'Definir canal'), botao('bo:config_cargo', 'Definir cargo')]], 0x8e44ad,
+    ['### Permissões\nApenas administradores alteram estas configurações.']);
 }
-function modalBO(bo = null) {
+function modalBO(bo = null, tipo = 'prisao') {
   const usuario = new UserSelectMenuBuilder().setCustomId('bo_policiais')
     .setMinValues(0).setMaxValues(10).setRequired(false);
   if (bo?.policiais?.length) usuario.setDefaultUsers(...bo.policiais);
-  return modal(bo ? `bo:editar:${bo.codigo}` : 'bo:criar',
-    bo ? `Editar ${bo.codigo}` : 'Registrar ocorrência', [
-      campo('bo_id', 'ID do personagem envolvido', { value: bo?.personagemId, max: 80, placeholder: 'Ex.: 1234' }),
-      campo('bo_local', 'Local / natureza da ocorrência', { value: bo?.local, max: 150 }),
-      campo('bo_relato', 'Descrição do ocorrido (RP)', { value: bo?.relato, max: 1800, paragraph: true }),
+  const tipoFinal = bo?.tipo || tipo;
+  const info = TIPOS_BO[tipoFinal] || TIPOS_BO.prisao;
+  return modal(bo ? `bo:editar:${bo.codigo}` : `bo:criar:${tipoFinal}`,
+    bo ? `Editar ${bo.codigo}` : `Registrar ${info.titulo}`, [
+      campo('bo_id', 'Acusado / ID no jogo', { value: bo?.personagemId, max: 80, placeholder: 'Ex.: 1234' }),
+      campo('bo_local', 'Artigo / local / natureza', { value: bo?.local, max: 150, placeholder: 'Ex.: Art. 04/2025 • Centro' }),
+      campo('bo_relato', 'Descrição da ocorrência', { value: bo?.relato, max: 1800, paragraph: true }),
       new (require('discord.js').LabelBuilder)().setLabel('Policiais envolvidos (opcional)').setUserSelectMenuComponent(usuario),
-      ...(!bo ? [upload('bo_anexos', 'Fotos e vídeos (até 10, opcional)', 10)] : [])
+      ...(!bo ? [upload('bo_anexos', 'Evidências: fotos e vídeos (até 10)', 10)] : [])
     ]);
 }
-function registroDaInteracao(i) {
+function registroDaInteracao(i, tipo = 'prisao') {
   const policiais = [...(i.fields.getSelectedUsers('bo_policiais', false)?.keys() || [])];
   return {
+    tipo,
     personagemId: limpar(i.fields.getTextInputValue('bo_id'), 80),
     local: limpar(i.fields.getTextInputValue('bo_local'), 150),
     relato: limpar(i.fields.getTextInputValue('bo_relato'), 1800),
@@ -674,19 +777,40 @@ function registroDaInteracao(i) {
 }
 function corpoBO(b) {
   const mencoes = [...new Set([b.autorId, ...b.policiais])].map(id => `<@${id}>`).join(' ');
+  const info = TIPOS_BO[b.tipo] || TIPOS_BO.prisao;
   return (
-    `# 📋 │ BOLETIM DE OCORRÊNCIA ${b.codigo}\n\n` +
-    `🆔 **ID do cidadão (RP):** ${b.personagemId}\n` +
-    `📍 **Local / natureza:** ${b.local}\n` +
-    `👮 **Policiais envolvidos:** ${mencoes}\n` +
-    `📝 **Relato:**\n${b.relato}\n\n` +
-    `📅 **Data:** <t:${Math.floor(b.criadoEm / 1000)}:f>\n` +
-    (b.editadoEm ? `✏️ **Editado:** <t:${Math.floor(b.editadoEm / 1000)}:f>\n` : '') +
-    `\n🤖 Organizações • Roleplay | Desenvolvido por Cetus`
+    `# ${info.emoji} | ${info.titulo} ${b.codigo}
+
+` +
+    `### 👤 Envolvido
+` +
+    `**Acusado (ID no jogo):** ${b.personagemId}
+
+` +
+    `### 📋 Ocorrência
+` +
+    `**Artigo / local / natureza:** ${b.local}
+` +
+    `**Policiais envolvidos:** ${mencoes || 'Nenhum informado'}
+
+` +
+    `**Descrição:**
+${b.relato}
+
+` +
+    `### 👮 Registro
+` +
+    `**Responsável:** <@${b.autorId}>
+` +
+    `**Registrado em:** <t:${Math.floor(b.criadoEm / 1000)}:f>
+` +
+    (b.editadoEm ? `**Última edição:** <t:${Math.floor(b.editadoEm / 1000)}:f>
+` : '') +
+    `**Número:** ${b.codigo}`
   );
 }
 function gerarPublicacao(b, listaNomes = []) {
-  const container = new ContainerBuilder().setAccentColor(0x2f6fed)
+  const container = new ContainerBuilder().setAccentColor((TIPOS_BO[b.tipo] || TIPOS_BO.prisao).cor)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(corpoBO(b)));
   if (listaNomes.length) {
     const galeria = new MediaGalleryBuilder().addItems(...listaNomes.slice(0, 10).map(nome =>
@@ -713,8 +837,9 @@ async function menuMinhas(i) {
   const lista = new StringSelectMenuBuilder().setCustomId('bo:escolher')
     .setPlaceholder('Selecione um BO para editar')
     .addOptions(meus.map(b => ({ value: b.codigo, label: `${b.codigo} • ${b.local}`.slice(0, 100) })));
-  return i.reply({ content: 'Selecione um BO seu para editar:',
-    components: [new ActionRowBuilder().addComponents(lista)], flags: MessageFlags.Ephemeral });
+  const card = caixa('📁 Minhas Ocorrências', 'Selecione um boletim seu para editar. O conteúdo será atualizado na mensagem original.', 0x8e44ad, [], [{ type: 'actionrow', value: new ActionRowBuilder().addComponents(lista) }]);
+  card.flags = MessageFlags.Ephemeral | MessageFlags.IsComponentsV2;
+  return i.reply(comLogo(card, i.guild, i.client));
 }
 async function handle(i) {
   const isCmd = i.isChatInputCommand() && ['boletim','consultar_bo'].includes(i.commandName);
@@ -726,8 +851,8 @@ async function handle(i) {
     if (isCmd && i.commandName === 'boletim') {
       if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem publicar o painel.'); return true; }
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const msg = await i.channel.send(cabecalho(i));
-      await i.editReply(`✅ Painel enviado: ${msg.url}`);
+      const msg = await enviarV2(i.channel, cabecalho(i));
+      await responder(i, `✅ Painel enviado: ${msg.url}`);
       return true;
     }
     if (isCmd && i.commandName === 'consultar_bo') {
@@ -741,16 +866,18 @@ async function handle(i) {
     }
     if (isBtn && i.customId === 'bo:config') {
       if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem configurar.'); return true; }
-      await responder(i, painelConfig(cfg(i.guildId)), true); return true;
+      await abrirConfig(i, painelConfig(cfg(i.guildId))); return true;
     }
     if (isBtn && ['bo:config_canal','bo:config_cargo'].includes(i.customId)) {
       if (!donoAdmin(i)) { await responder(i, '❌ Sem permissão.'); return true; }
       const isCanal = i.customId.endsWith('canal');
       const s = isCanal ? { type: 8, custom_id: 'bo:selecionar_canal', channel_types: [0], placeholder: 'Selecione o canal dos BOs' }
         : { type: 6, custom_id: 'bo:selecionar_cargo', placeholder: 'Selecione o cargo policial' };
-      await i.update({ flags: MessageFlags.IsComponentsV2, components: [{type:17,components:[
+      await atualizar(i, { flags: MessageFlags.IsComponentsV2, components: [{type:17,components:[
         {type:10,content: isCanal ? '# Selecione o canal de publicação' : '# Selecione o cargo da corporação'},
-        {type:1,components:[s]}
+        {type:1,components:[s]},
+        {type:14,divider:true,spacing:1},
+        {type:1,components:[{type:2,style:2,custom_id:'bo:config',label:'↩️ Voltar'}]}
       ]}] }); return true;
     }
     if (isSelect && ['bo:selecionar_canal','bo:selecionar_cargo'].includes(i.customId)) {
@@ -758,11 +885,26 @@ async function handle(i) {
       const c = cfg(i.guildId);
       if (i.customId === 'bo:selecionar_canal') c.canalId = i.values[0];
       else c.cargoId = i.values[0];
-      await i.update(painelConfig(c)); return true;
+      await atualizar(i, painelConfig(c)); return true;
     }
-    if (isBtn && i.customId === 'bo:novo') {
+    if (isBtn && ['bo:novo:prisao', 'bo:novo:apreensao', 'bo:novo:multa'].includes(i.customId)) {
       if (!(await autorizado(i))) return true;
-      await i.showModal(modalBO()); return true;
+      const tipo = i.customId.split(':')[2] || 'prisao';
+      await i.showModal(modalBO(null, tipo)); return true;
+    }
+    if (isBtn && i.customId === 'bo:consultar') {
+      if (!(await autorizado(i))) return true;
+      await i.showModal(modal('bo:consulta', 'Consultar boletins', [
+        campo('bo_consulta_id', 'ID do personagem no jogo', { max: 80, placeholder: 'Ex.: 1234' })
+      ])); return true;
+    }
+    if (isModal && i.customId === 'bo:consulta') {
+      if (!(await autorizado(i))) return true;
+      const id = i.fields.getTextInputValue('bo_consulta_id').trim().toLowerCase();
+      const resultados = [...boletins.values()].filter(b => b.guildId === i.guildId && b.personagemId.toLowerCase() === id).slice(-15);
+      await responder(i, resultados.length ? resultados.map(b => `• **${b.codigo}** — ${b.local}\n${b.url}`).join('\n\n') :
+        'ℹ️ Nenhum boletim encontrado para esse ID nesta sessão do bot.');
+      return true;
     }
     if (isBtn && i.customId === 'bo:minhas') {
       if (!(await autorizado(i))) return true;
@@ -776,7 +918,7 @@ async function handle(i) {
       }
       await i.showModal(modalBO(b)); return true;
     }
-    if (isModal && (i.customId === 'bo:criar' || i.customId.startsWith('bo:editar:'))) {
+    if (isModal && (i.customId.startsWith('bo:criar:') || i.customId.startsWith('bo:editar:'))) {
       if (!(await autorizado(i))) return true;
       const editando = i.customId.startsWith('bo:editar:');
       const codigo = editando ? i.customId.slice('bo:editar:'.length) : null;
@@ -784,7 +926,8 @@ async function handle(i) {
       if (editando && (!antigo || antigo.guildId !== i.guildId || antigo.autorId !== i.user.id)) {
         await responder(i, '❌ Apenas o autor pode editar este BO.'); return true;
       }
-      const dados = registroDaInteracao(i);
+      const tipo = editando ? (antigo?.tipo || 'prisao') : (i.customId.split(':')[2] || 'prisao');
+      const dados = registroDaInteracao(i, tipo);
       const fotos = editando ? [] : arquivos(i, 'bo_anexos', 10, false);
       const c = cfg(i.guildId);
       for (const id of dados.policiais) {
@@ -798,21 +941,22 @@ async function handle(i) {
       if (!podeEnviar(canal)) throw new Error('Canal dos BOs não existe ou o bot não pode enviar mensagens.');
       if (!editando) {
         contador++;
-        const b = { ...dados, codigo: `BO-${Date.now()}-${contador}`, guildId: i.guildId,
+        const b = { ...dados, codigo: `B.O. #${contador}`, guildId: i.guildId,
           autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id };
         const files = envioArquivos(fotos);
         const payload = gerarPublicacao(b, files.map(f => f.name));
-        const msg = await canal.send({ ...payload, ...(files.length ? { files } : {}) });
+        const msg = await enviarV2(canal, { ...payload, ...(files.length ? { files } : {}) });
         b.mensagemId = msg.id; b.url = msg.url; b.arquivos = files.map(f => f.name);
         boletins.set(b.codigo, b);
-        await i.editReply(`✅ **${b.codigo}** publicado: ${msg.url}`);
+        await responder(i, `✅ **${b.codigo}** publicado: ${msg.url}`);
       } else {
         const msg = await canal.messages.fetch(antigo.mensagemId);
         const novo = { ...antigo, ...dados, editadoEm: Date.now() };
         // Nenhum campo attachments -> Discord mantém todos os arquivos anexados.
-        await msg.edit(gerarPublicacao(novo, antigo.arquivos));
+        await msg.edit({ ...comLogo(gerarPublicacao(novo, antigo.arquivos), i.guild, i.client),
+          attachments: [...msg.attachments.values()].map(a => ({ id: a.id })) });
         boletins.set(codigo, novo);
-        await i.editReply(`✅ **${codigo}** editado com sucesso: ${msg.url}`);
+        await responder(i, `✅ **${codigo}** editado com sucesso: ${msg.url}`);
       }
       return true;
     }
@@ -834,6 +978,7 @@ const recrutamento = __cetusLoad('sistemas/recrutamento');
 const registro = __cetusLoad('sistemas/registro');
 const ocorrencias = __cetusLoad('sistemas/ocorrencias');
 const modulos = [ocorrencias, registro, recrutamento];
+const { aviso, comLogo } = __cetusLoad('sistemas/comum');
 
 const token = process.env.DISCORD_TOKEN?.trim();
 if (!token) {
@@ -878,7 +1023,7 @@ client.on(Events.InteractionCreate, async i => {
   } catch(e) {
     console.error('Erro geral em InteractionCreate:', e);
     if (!i.replied && !i.deferred) {
-      await i.reply({content:'❌ Erro inesperado. Consulte o console.',flags:MessageFlags.Ephemeral}).catch(()=>null);
+      await i.reply(comLogo({ ...aviso('❌ Erro inesperado. Consulte o console.'), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 }, i.guild, i.client)).catch(()=>null);
     }
   }
 });

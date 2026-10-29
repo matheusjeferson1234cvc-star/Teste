@@ -1,25 +1,38 @@
-# CETUS — VERSÃO DE TESTE, ARQUIVO ÚNICO
+# CETUS — V2 com visual profissional (teste sem armazenamento)
 
-Este ZIP corrige o erro `MODULE_NOT_FOUND` de `./sistemas/recrutamento` caso a pasta `sistemas` não tenha sido enviada à Discloud. **Todos os módulos locais estão incorporados no `index.js`.** NÃO requer a pasta `sistemas`.
+Esta versão reúne os sistemas de **Recrutamento, Registro sem tickets e Boletins de Ocorrência** em **um único `index.js`**. Não requer `sistemas/`, Supabase nem banco de dados.
 
 ## Instalar na Discloud
 
-1. Faça backup da versão antiga. Extraia ou envie este ZIP inteiro, com `index.js`, `package.json` e `discloud.config` na raiz da aplicação (não dentro de uma pasta a mais).
-2. Configure `DISCORD_TOKEN` na variável segura da hospedagem. `CLIENT_ID` é opcional e `GUILD_ID` é opcional (recomendado no teste para comandos aparecerem rápido). NÃO publique nenhum token ou arquivo `.env` preenchido.
-3. Reinicie o bot. As dependências externas `discord.js` e `dotenv` são instaladas a partir de `package.json` pela hospedagem.
-4. Se a Discloud continuar mostrando `MODULE_NOT_FOUND` em `index.js:7`, a versão antiga ainda está sendo executada; faça novo deploy e confira o diretório raiz.
+1. Faça backup do seu bot atual e, se possível, teste primeiro em um servidor Discord de testes.
+2. Envie o ZIP sem modificar a estrutura. `index.js`, `package.json` e `discloud.config` estão na raiz.
+3. Configure **`DISCORD_TOKEN`** em local privado na hospedagem. Nunca publique o token no GitHub ou envie para outra pessoa. Se usar o `.env`, mantenha-o privado.
+4. Confira as permissões: Ver canais, Enviar mensagens, Ler histórico, Gerenciar cargos, Gerenciar apelidos, Gerenciar canais (tickets do Recrutamento) e Anexar arquivos. O cargo do bot deve ficar acima dos cargos atribuídos.
+5. Ative **Server Members Intent** e **Message Content Intent** no Developer Portal, necessários para cargos e respostas do Recrutamento.
+6. Reinicie e teste os comandos `/recrutamento`, `/registro`, `/boletim` e `/consultar_bo`.
 
-## Comandos
+Use Node.js 22.12+ e `discord.js` 14.25.1. Em um computador, rode `npm install`, `npm run check` e `npm start`.
 
-- `/recrutamento`: tickets e formulário de recrutamento.
-- `/registro`: formulário **modal** sem ticket, turno, apelido, cargos e foto fictícia opcional.
-- `/boletim`: publica o painel de BO (configurar canal e cargo de corporação no botão ⚙️).
-- `/consultar_bo id:1234`: pesquisa BOs da sessão atual.
+## Interface e cores
 
-Os cargos de turno são configuráveis (manhã, tarde, noite, madrugada). BO permite mencionar policiais, enviar até 10 imagens ou vídeos, e editar apenas o texto/policiais dos BOs criados pelo próprio autor. Fotos e vídeos são enviados na mensagem original do Discord.
+- **Recrutamento: verde**, com aprovação/reprovação, perguntas, temporizadores e ticket apenas nesse sistema.
+- **Registro: azul**, totalmente por modal, com nome do personagem, ID, seleção de turno e imagem de documento **fictício** opcional. O bot aplica o cargo de turno selecionado e remove cargos de outros turnos, se configurados.
+- **Boletins: vermelho**, com Prisão, Apreensão e Multa; formulário com marcação de policiais e até dez imagens/vídeos. A cor da publicação depende do tipo. Consulta pelo botão ou `/consultar_bo`. Apenas o autor pode editar seus próprios BOs.
+- **Configurações:** o primeiro clique abre uma resposta **privada**; os submenus, seletores e botões Voltar **atualizam a mesma mensagem**, sem abrir uma coleção de janelas. Formulários modais continuam abrindo normalmente quando necessário.
+- **Visual V2** para painéis, respostas de sucesso/erro, logs, aprovação e mensagens privadas.
+- **Ícone:** o bot tenta usar `CETUS_LOGO_URL` (opcional), depois o ícone do servidor e depois o avatar do bot.
 
-## Atenção: TESTE SEM ARMAZENAMENTO
+## IMPORTANTE: teste sem banco de dados
 
-- Não há banco de dados nem armazenamento local: configurações e índice dos BOs **se perdem quando o bot é reiniciado**. Arquivos/mensagens publicados no Discord persistem enquanto não forem excluídos, mas o bot não poderá editar/consultar os registros antigos pelo índice da RAM após reinício.
-- Esse pacote não foi testado conectado a um servidor Discord real; a sintaxe JavaScript pode ser verificada com `node --check index.js`. Requer Node >=22.12 e discord.js conforme `package.json`.
-- Não envie RG real; use apenas documentos fictícios do RP.
+**Tudo que está em memória some ao reiniciar**: configurações, IDs dos painéis, perguntas, processos pendentes e índice dos boletins (consulta/edição). Os BOs já publicados e os arquivos que estão no Discord permanecem nas mensagens enquanto não forem excluídos, mas o bot não reconhecerá seu histórico para consulta/edição após reiniciar.
+
+Na edição de BO, o bot preserva os anexos publicados, sem adicionar novos arquivos. O limite de tamanho de upload depende do Discord.
+
+## Testes que você deve fazer
+
+1. Recrutamento: Configurações → Visão geral → Voltar → Canais e cargos → Voltar; perguntas e tempo; aprovação/reprovação.
+2. Registro: Configurações → Cargos dos turnos → Voltar; escolha cada turno no modal e confira a atribuição de cargo e a foto no LOG.
+3. Boletim: Configurações → Definir canal/cargo → Voltar; registre um BO com imagens/vídeos fictícios; consulte pelo ID e edite o próprio boletim. Confira que os anexos permanecem no post.
+4. Reinicie apenas após confirmar os testes, pois **os dados de memória serão perdidos**.
+
+**Verificação realizada nesta preparação:** sintaxe do JavaScript e simulação local de navegação nos menus. Não foi possível executar o bot em uma conexão real ao Discord; se aparecer erro na Discloud, mande o trecho de logs.
