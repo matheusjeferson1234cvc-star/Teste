@@ -25,7 +25,7 @@ const {
   MessageFlags, PermissionsBitField, ContainerBuilder, TextDisplayBuilder,
   SeparatorBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder,
   ModalBuilder, LabelBuilder, TextInputBuilder, TextInputStyle,
-  FileUploadBuilder, StringSelectMenuBuilder
+  FileUploadBuilder, StringSelectMenuBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 
 const BRAND = '🤖 Organizações • Roleplay | Desenvolvido por Cetus';
@@ -74,6 +74,22 @@ ${descricao}`));
 }
 function painel(titulo, descricao, linhas = [], cor = 0x3498db, extra = []) {
   return caixa(titulo, descricao, cor, linhas, extra, true);
+}
+// Cabeçalho animado incluso no pacote. O arquivo permanece anexado à mensagem,
+// portanto não precisa ser hospedado externamente e funciona mesmo após reiniciar.
+function bannerAnimado(payload, tipo, bannerPersonalizado = null) {
+  const permitidos = ['recrutamento', 'registro', 'boletim'];
+  if (!permitidos.includes(tipo)) throw new Error('Tipo de banner desconhecido');
+  const nome = `cetus-${tipo}.gif`;
+  const url = validoUrl(bannerPersonalizado) || `attachment://${nome}`;
+  const galeria = new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(url));
+  const principal = payload?.components?.[0];
+  if (typeof principal?.spliceComponents !== 'function') throw new Error('Painel V2 inválido para banner');
+  principal.spliceComponents(0, 0, galeria);
+  if (!validoUrl(bannerPersonalizado)) {
+    payload.files = [{ attachment: require('node:path').join(__dirname, 'assets', nome), name: nome }];
+  }
+  return payload;
 }
 function aviso(msg, tipo = 'info') {
   const bruto = limpar(typeof msg === 'string' ? msg : String(msg || ''));
@@ -154,6 +170,14 @@ async function sincronizarPaineis(tipo, guild, client, criarPayload) {
         continue;
       }
       const dados = comLogo(criarPayload(), guild, client);
+      // Reutiliza o GIF já anexado. Evita reenviar cópias a cada configuração.
+      const existentes = [...(msg.attachments?.values?.() || [])];
+      const nomes = new Set(existentes.map(a => a.name));
+      if (dados.files?.length) {
+        dados.files = dados.files.filter(f => !nomes.has(f.name));
+        if (!dados.files.length) delete dados.files;
+      }
+      // Quando o Discord edita a mensagem, os anexos existentes ficam preservados.
       await msg.edit(dados);
       atualizados++;
     } catch (e) {
@@ -247,7 +271,7 @@ function guildConfig(map, guildId, fabrica) {
 }
 function podeEnviar(canal) { return canal && typeof canal.send === 'function' && canal.isTextBased(); }
 module.exports = {
-  BRAND, V2, EPHEMERAL, donoAdmin, limpar, validoUrl, texto, botoes, caixa, painel, aviso, replyMensagem,
+  BRAND, V2, EPHEMERAL, donoAdmin, limpar, validoUrl, texto, botoes, caixa, painel, bannerAnimado, aviso, replyMensagem,
   campo, upload, modal, arquivos, envioArquivos, responder, erro, guildConfig, podeEnviar,
   comLogo, enviarV2, atualizar, abrirConfig, concluirConfig,
   registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
@@ -263,7 +287,7 @@ const {
   PermissionsBitField, ChannelType, StringSelectMenuBuilder, ActionRowBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, validoUrl, painel, aviso, replyMensagem, campo, modal, guildConfig, responder, erro, podeEnviar,
+  donoAdmin, limpar, validoUrl, painel, bannerAnimado, aviso, replyMensagem, campo, modal, guildConfig, responder, erro, podeEnviar,
   enviarV2, comLogo, atualizar, abrirConfig, concluirConfig,
   registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
@@ -291,10 +315,7 @@ function painelPrincipal(c) {
       ['rec:config','Configurações',ButtonStyle.Secondary,'⚙️']]],0x27ae60,
     [`## 🛡️ Etapas do Processo\n> • 📝 Preenchimento do formulário\n> • ⏱️ Você terá **${tempoTxt}** para responder cada pergunta\n> • 🔎 Análise da candidatura\n> • 🎤 Entrevista com a equipe\n> • ✅ Resultado final`,
      '📷 **Atenção:** envie apenas imagem do RG **do personagem do jogo**. Não envie documento real.']);
-  if (c.bannerUrl) resultado.components[0].spliceComponents(0, 0,
-    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
-  );
-  return resultado;
+  return bannerAnimado(resultado, 'recrutamento', c.bannerUrl);
 }
 async function sincronizarPainelPrincipal(i, c) {
   return sincronizarPaineis('recrutamento', i.guild, i.client, () => painelPrincipal(c));
@@ -616,7 +637,7 @@ const {
   StringSelectMenuBuilder, LabelBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, validoUrl, painel, aviso, campo, upload, modal, arquivos, envioArquivos,
+  donoAdmin, limpar, validoUrl, painel, bannerAnimado, aviso, campo, upload, modal, arquivos, envioArquivos,
   responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig, concluirConfig,
   registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
@@ -636,10 +657,7 @@ function painelRegistro(c) {
     [[['reg:iniciar', 'Registre-se', ButtonStyle.Primary, '📝'],
       ['reg:config', 'Configurações', ButtonStyle.Secondary, '⚙️']]], 0x2980b9,
     ['## ❔ Como funciona?\n> • 📝 Preencha o formulário de registro.\n> • 👤 Informe seus dados corretamente.\n> • 🏷️ Seu nome e cargos serão configurados automaticamente.\n> • ✅ O registro será concluído imediatamente.']);
-  if (c.bannerUrl) resultado.components[0].spliceComponents(0, 0,
-    new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(c.bannerUrl))
-  );
-  return resultado;
+  return bannerAnimado(resultado, 'registro', c.bannerUrl);
 }
 async function sincronizarPainel(i, c) {
   return sincronizarPaineis('registro', i.guild, i.client, () => painelRegistro(c));
@@ -811,7 +829,7 @@ const {
   TextDisplayBuilder, MediaGalleryBuilder, MediaGalleryItemBuilder
 } = require('discord.js');
 const {
-  donoAdmin, limpar, painel, caixa, aviso, campo, upload, modal, arquivos, envioArquivos,
+  donoAdmin, limpar, painel, caixa, bannerAnimado, aviso, campo, upload, modal, arquivos, envioArquivos,
   responder, erro, guildConfig, podeEnviar, enviarV2, comLogo, atualizar, abrirConfig,
   registrarPainelMensagem, registrarPainelDoClique, sincronizarPaineis
 } = require('./comum');
@@ -832,7 +850,7 @@ const comandos = [
 const TIPOS_BO = { prisao: { titulo: 'Prisão B.O.', emoji: '🚓', cor: 0xc0392b }, apreensao: { titulo: 'Apreensão B.O.', emoji: '🚔', cor: 0x2f6fed }, multa: { titulo: 'Multa B.O.', emoji: '💰', cor: 0xf39c12 } };
 
 function cabecalho(i) {
-  return caixa('🚔 | Boletim de Ocorrência',
+  const resultado = caixa('🚔 | Boletim de Ocorrência',
     'Sistema de registro e gerenciamento de ocorrências policiais.\n\nUse os botões abaixo para registrar um novo B.O. ou consultar os seus registros.',
     0xc0392b,
     [
@@ -842,6 +860,7 @@ function cabecalho(i) {
     ['### 📝 Registrar ocorrência\nSelecione o tipo de boletim e preencha o formulário em modal V2. Você também pode marcar os policiais envolvidos e anexar até **10 imagens ou vídeos**.',
      '### ℹ️ Observações\n• Somente membros com o cargo configurado podem registrar ocorrências.\n• Consulta e edição ficam disponíveis até o bot reiniciar (versão sem banco de dados).']
   );
+  return bannerAnimado(resultado, 'boletim');
 }
 
 function painelConfig(c) {

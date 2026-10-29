@@ -1,6 +1,6 @@
 {
-  "name": "cetus-bot-v2-auto-paineis-sem-banco",
-  "version": "2.5.0",
+  "name": "cetus-bot-v2-gifs-animados-sem-banco",
+  "version": "2.6.0",
   "private": true,
   "main": "index.js",
   "scripts": {
