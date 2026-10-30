@@ -1,40 +1,46 @@
-# Cetus V3.3 — Código Penal Reduto RP, seleção integrada
+# Cetus V3.5 — Equipe no próprio Modal V2 | GitHub sem pastas
 
-## Novidade no Boletim de Ocorrência
+Esta versão atualiza o bot anterior e **mantém os outros sistemas**: Recrutamento, Registro, GIFs, diagnóstico e atualizações automáticas.
 
-- 31 artigos fictícios do código penal do Reduto RP, organizados em 5 categorias.
-- Em **Prisão**, **Apreensão** ou **Multa**, o bot abre **um único painel privado de seleção de artigos**, sem uma segunda página de confirmação. A pessoa pode pesquisar pelo número ou nome do crime (ex.: `21`, `homicídio`), filtrar por categoria, acrescentar **até 20 artigos** de grupos diferentes e remover artigos quando necessário.
-- Os botões **Normal**, **Reduzida**, **Aumentada** escolhem o tipo de pena do boletim; os tempos dos artigos são somados.
-- As multas fixas também são somadas. Para **Posse de Munição (28)** e **Tráfico de Drogas (04)**, use **Quantidades / Multa extra** para informar quantas unidades: a multa de cada artigo é multiplicada pela quantidade. É possível incluir uma multa extra manual em reais inteiros.
-- **Fianças** são mostradas separadamente; não se somam ao valor da multa.
-- O botão **Preencher e publicar B.O.** abre o formulário padrão do Discord com ID do personagem, local, descrição, policiais e fotos/vídeos. Após enviar, o bot publica automaticamente o B.O., com os artigos e totais visíveis em seção separada.
-- A **edição** do B.O. também permite modificar a seleção dos artigos e mantém os anexos anteriores.
+## Como usar Boletim de Ocorrência
 
-> Os códigos são regras **fictícias do Reduto RP** fornecidas pelo usuário, e não correspondem à legislação real.
+1. Configure seu bot e publique ou atualize o painel com `/boletim` no canal onde está o painel antigo.
+2. Toque em **Configurações**: abre um **modal V2** com canal de relatórios, cargo geral, cargo de Prisão, cargo de Apreensão e cargo de Multa.
+3. Toque em **Prisão**, **Apreensão** ou **Multa**: o **modal V2 abre imediatamente**, sem passar por painel intermediário.
+4. Complete ID fictício do personagem, local, descrição, códigos penais e selecione **até 10 colegas policiais no próprio modal**, antes de enviar. O autor é incluído automaticamente. A publicação separa essas informações em seções.
+5. Após publicar, a resposta privada oferece **Editar B.O.**, **Equipe** (caso queira alterar os participantes) e **Arquivos** (para adicionar até 10 fotos/vídeos). Os anexos são opcionais e são inseridos após salvar, porque o modal principal já usa os cinco campos disponíveis.
+6. **Pesquisar artigos** abre um modal para procurar por nome ou número; o resultado retorna com os nomes e valores, permitindo voltar ao modal de B.O. e digitar os códigos.
 
-### Artigo 04/2025 — valor a conferir
-Na tabela fornecida, Tráfico de Drogas tem **pena normal de 20 min, reduzida de 32 min, aumentada de 26 min**. O arquivo preserva esses números exatamente, mas o painel sinaliza a inconsistência para confirmação.
+### Campo "Artigos, pena e multa extra"
 
-## Código modular, sem criar pastas no GitHub
+Digite os artigos separados por vírgulas. O sistema usa os **31 artigos fictícios do Reduto RP** fornecidos pelo usuário.
 
-Todos os arquivos do ZIP ficam **diretamente na raiz**: `index.js`, `cetus-ocorrencias.js`, `cetus-codigo-penal.js`, os outros módulos `cetus-*.js`, três GIFs, `package.json`, `discloud.config`, `smoke.js` e documentos.
+- `01, 02, 07` — três artigos, penas normais e somadas.
+- `01, 28x12, 04x3; pena=reduzida` — quantidades por unidade e pena reduzida.
+- `02, 03; pena=aumentada; extra=500` — pena aumentada com multa adicional de R$ 500.
+- `01/2025, 02/2025` — também aceita a notação completa.
 
-Quando a tabela do Reduto mudar, basta editar `cetus-codigo-penal.js`. Outros módulos de Recrutamento, Registro, GIFs e Diagnóstico continuam separados.
+`pena=normal` é o padrão. Para os artigos de multa por unidade (04 e 28), é obrigatório usar `04xN` e `28xN` com uma quantidade maior que zero. Para não adicionar crimes, deixe o campo em branco. Até **20 artigos diferentes** e **10 evidências** por boletim.
 
-### Instalação
+**Nota de consistência:** o Art. 04 conserva os valores enviados pelo usuário (normal 20, reduzida 32, aumentada 26 min); confirme-os com os administradores do Reduto RP.
 
-1. Guarde uma cópia do código anterior antes de substituir.
-2. Extraia o ZIP e suba os arquivos **extraídos**, não o ZIP fechado, na raiz do repositório GitHub.
-3. Confirme que **`cetus-codigo-penal.js`** e todos os outros `.js` foram enviados, com exatamente esses nomes.
-4. Configure o token **fora do GitHub**, na Discloud, pela variável `DISCORD_TOKEN`.
-5. Reinicie o bot e execute `/boletim` no canal onde está o painel antigo para atualizá-lo.
-6. Abra as **Configurações** do B.O. e ajuste o canal e os cargos de acesso, pois as configurações ainda não são persistentes.
-7. Teste **Prisão**, selecione vários artigos, use **Pesquisar**, altere o modo de pena, informe quantidades quando necessárias e confirme a publicação.
+### Por que nem tudo está no mesmo modal?
 
-### Limitações
+Modais do Discord permitem até **cinco componentes rotulados**. O modal principal já tem ID, local, descrição, artigos e **seleção de colegas**. Por isso, as fotos e vídeos são adicionados pelo botão **Arquivos** após salvar. A seleção de colegas **não exige outra etapa**. O botão separado **Equipe** serve somente para editar os participantes depois. O GIF e os botões continuam no **painel público Components V2**, pois o Discord não permite fixar um modal como mensagem permanente. Não há busca instantânea enquanto você digita no modal; o botão "Pesquisar artigos" faz a pesquisa.
 
-- **Sem banco de dados**, os rascunhos e as configurações não sobrevivem ao reinício. Rascunhos privados de artigos expiram em 30 minutos.
-- O Discord limita os menus a 25 opções de cada vez; use as categorias ou a busca para localizar qualquer um dos 31 artigos.
-- O Discord limita os modais a cinco campos; por isso a escolha dos artigos fica na mesma mensagem privada V2 e o preenchimento dos dados ocorre em um modal sobre essa mensagem.
-- Os testes são **offline**, com simulação de interações e validação de sintaxe. Ainda é necessário confirmar a versão em um servidor Discord real.
-- Preserve o crédito `🤖 Organizações • Roleplay | Desenvolvido por Cetus`.
+## Instalação pelo GitHub no celular
+
+Todos os arquivos devem ficar **na raiz do repositório**, sem subpastas. Extraia o ZIP e envie o conteúdo por **Add file → Upload files**. Adicione também o arquivo novo `cetus-bo-modais.js` e mantenha `cetus-codigo-penal.js`, `cetus-ocorrencias.js`, `index.js`, os três GIFs e os demais arquivos.
+
+Configure a variável `DISCORD_TOKEN` **na Discloud**; não publique o token no GitHub. `GUILD_ID` e `CLIENT_ID` são opcionais, conforme a configuração anterior.
+
+**No GitHub não basta adicionar os novos arquivos:** substitua os arquivos antigos de mesmo nome, principalmente `cetus-ocorrencias.js` e `index.js`.
+
+### Validação offline
+
+- `npm run check` — checagem de sintaxe.
+- `npm run test:offline` — testes com Discord simulado; não abre conexão com um servidor real.
+
+Configurações e o índice de B.O.s desta versão ainda ficam **somente em RAM** e desaparecem após reiniciar. A consulta histórica pode buscar mensagens no canal configurado, mas editar um B.O. anterior à reinicialização requer persistência futura. As regras penais são **fictícias e específicas do servidor RP**, não leis reais.
+
+**Crédito original:** 🤖 Organizações • Roleplay | Desenvolvido por Cetus

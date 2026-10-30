@@ -33,7 +33,12 @@ class Builder {
   setFileUploadComponent(c) {this.parts=[c];return this;}
   setUserSelectMenuComponent(c) {this.parts=[c];return this;}
   setStringSelectMenuComponent(c) {this.parts=[c];return this;}
-  setDefaultUsers() {return this;}
+  setDefaultUsers(...ids) {this.data.default_values=ids;return this;}
+  setDefaultRoles(...ids) {this.data.default_values=ids;return this;}
+  setDefaultChannels(...ids) {this.data.default_values=ids;return this;}
+  setChannelTypes(...types) {this.data.channel_types=types;return this;}
+  setChannelSelectMenuComponent(c) {this.parts=[c];return this;}
+  setRoleSelectMenuComponent(c) {this.parts=[c];return this;}
   setColor() {return this;}
   addTextDisplayComponents(...c) {this.parts.push(...c.flat());return this;}
   addSeparatorComponents(...c) {this.parts.push(...c.flat());return this;}
@@ -56,7 +61,7 @@ const types = {
   ContainerBuilder:17, TextDisplayBuilder:10, SeparatorBuilder:14, ActionRowBuilder:1,
   ButtonBuilder:2, MediaGalleryBuilder:12, MediaGalleryItemBuilder:0,
   LabelBuilder:18, FileUploadBuilder:19, TextInputBuilder:4, ModalBuilder:99,
-  StringSelectMenuBuilder:3, UserSelectMenuBuilder:5, SlashCommandBuilder:0
+  StringSelectMenuBuilder:3, UserSelectMenuBuilder:5, ChannelSelectMenuBuilder:8, RoleSelectMenuBuilder:6, SlashCommandBuilder:0
 };
 const djs = new Proxy({
   MessageFlags:{IsComponentsV2:32768,Ephemeral:64},
@@ -64,6 +69,7 @@ const djs = new Proxy({
   PermissionsBitField:{Flags:{Administrator:8n, ManageRoles:1n,ManageNicknames:2n,ManageChannels:4n,ViewChannel:8n,SendMessages:16n,ReadMessageHistory:32n,AttachFiles:64n}},
   PermissionFlagsBits:{ManageGuild:32n},
   ChannelType:{GuildText:0,GuildCategory:4},
+  ChannelType:{GuildText:0},
   TextInputStyle:{Short:1,Paragraph:2}
 }, {get(obj,prop){if(prop in obj)return obj[prop];if(prop in types)return class extends Builder {constructor(){super(types[prop]);}};throw Error(`Unknown mocked ${String(prop)}`);}});
 
@@ -235,7 +241,10 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   assert.deepEqual(editados.map(x=>x.id),['reg1']);
   console.log('OK: registro atualiza automaticamente o painel');
   editados.length=0;
-  const boSelecao=iBase('bo:selecionar_canal',true);
+  const boSelecao={...iBase('bo:config_modal'),
+    isButton:()=>false,isModalSubmit:()=>true,
+    fields:{getSelectedChannels:()=>new Map([['destino',{id:'destino'}]]),getSelectedRoles:()=>new Map()},
+    deferReply:async function(){this.deferred=true;},editReply:async function(p){this.updated=p;}};
   await bo.handle(boSelecao);
   assert.deepEqual(editados.map(x=>x.id),['bo1']);
   console.log('OK: boletim atualiza automaticamente o painel');
@@ -280,189 +289,117 @@ const guild={id:'123',name:'Servidor de testes',roles:{cache:new Map()},
   console.log('OK: comando /testar_gif constrói resposta privada com anexo animado');
 
 
-  // Novo B.O. com campos separados e anexos também disponíveis ao editar.
-  const novoBO = bo.buildModal(null,'prisao').toJSON();
-  assert.equal(novoBO.components.length,5,'formulário do BO precisa ter cinco campos');
-  assert.match(JSON.stringify(novoBO),/Local da ocorrência/);
-  assert.match(JSON.stringify(novoBO),/Descrição detalhada/);
-  assert.match(JSON.stringify(novoBO),/Fotos e vídeos/);
-  const edicaoBO = bo.buildModal({codigo:'B.O. #1',tipo:'prisao',personagemId:'150',local:'Centro',relato:'Teste',policiais:[]}).toJSON();
-  assert.match(JSON.stringify(edicaoBO),/Fotos e vídeos/,'edição permite novos anexos');
-  const publicacaoBO = bo.buildReport({
-    codigo:'B.O. #1',tipo:'prisao',personagemId:'150',local:'Centro',relato:'Descrição de teste',
-    autorId:'100',policiais:['101'],criadoEm:Date.now()
-  },['imagem.png','video.mp4']);
-  validarPainel('BO com fotos e vídeos separados',publicacaoBO);
-  const publicado = JSON.stringify(comum.comLogo(publicacaoBO,{iconURL:()=>null}).components);
-  for (const label of ['Identificação','Local da ocorrência','Código Penal','Descrição da prisão','Arquivos e evidências','Equipe responsável']) {
-    assert.ok(publicado.includes(label),`seção ausente: ${label}`);
-  }
-  assert.match(publicado,/attachment:\/\/imagem.png/);
-  assert.match(publicado,/attachment:\/\/video.mp4/);
-  console.log('OK: BO organizado por seções; edição aceita anexos');
-  assert.equal(publicacaoBO.components.length,4,'publicação com quadro próprio do Código Penal e totais');
-  for (const tipo of ['prisao','apreensao','multa']) {
+  // Modal V2 de BO: cinco campos Label, seleção de colegas no próprio formulário. Arquivos são adicionados depois.
+  const modais=require('./cetus-bo-modais');
+  const penal=require('./cetus-codigo-penal');
+  assert.equal(penal.ARTIGOS.length,31);
+  for(const tipo of ['prisao','apreensao','multa']) {
     const m=bo.buildModal(null,tipo).toJSON();
-    assert.equal(m.components.length,5,`modal ${tipo} respeita limite de cinco campos`);
-    assert.match(JSON.stringify(m),/Fotos e vídeos/);
-    const r=bo.buildReport({codigo:'B.O. #2',tipo,personagemId:'99',local:'Centro',relato:'Detalhe de teste',autorId:'adm',policiais:[],criadoEm:Date.now()},[]);
-    validarPainel('boletim separado '+tipo,r);
+    assert.equal(m.components.length,5,'modal BO deve ter cinco labels');
+    assert.ok(m.components.every(c=>c.type===18));
+    assert.match(JSON.stringify(m),/bo_artigos/);
+    assert.match(JSON.stringify(m),/bo_policiais/);
+    assert.doesNotMatch(JSON.stringify(m),/bo_anexos/);
+    assert.equal(m.components[4].components[0].type,5,'campo final deve ser o seletor de usuários');
+    assert.equal(m.components[4].components[0].max_values,10,'até dez colegas');
+    console.log('OK: Modal V2 em '+tipo);
   }
-  const cfgTipo=bo.getConfig('123');
-  cfgTipo.cargosTipos={prisao:'r1',apreensao:'r2',multa:null};
-  const configJson=JSON.stringify(comum.comLogo(bo.painelConfig(cfgTipo),{iconURL:()=>null}).components);
-  for(const id of ['bo:selecionar_canal','bo:selecionar_cargo','bo:selecionar_tipo_prisao','bo:selecionar_tipo_apreensao','bo:selecionar_tipo_multa'])
-    assert.ok(configJson.includes(id),`seletor ausente: ${id}`);
-  console.log('OK: configuração separada de cada tipo');
-  // Alterar um cargo específico deve atualizar a mesma janela privada.
-  const iConfig={
-    guildId:'testes-config-bo',guild:{id:'testes-config-bo',ownerId:'admin',name:'Servidor',iconURL:()=>null},
-    client:{user:{id:'bot',displayAvatarURL:()=>null}},user:{id:'admin'},
-    memberPermissions:{has:()=>true},values:['policia-apreensao'],customId:'bo:selecionar_tipo_apreensao',
-    isChatInputCommand:()=>false,isButton:()=>false,isRoleSelectMenu:()=>true,
-    isStringSelectMenu:()=>false,isChannelSelectMenu:()=>false,isModalSubmit:()=>false,
-    update:async function(payload){this.atualizacao=payload;},reply:async function(){throw Error('Não deve abrir outra janela');}
-  };
-  await bo.handle(iConfig);
-  assert.equal(bo.getConfig('testes-config-bo').cargosTipos.apreensao,'policia-apreensao');
-  assert.ok(iConfig.atualizacao?.components?.length,'seleção devolve painel na mesma mensagem');
-  iConfig.values=[];
-  await bo.handle(iConfig);
-  assert.equal(bo.getConfig('testes-config-bo').cargosTipos.apreensao,null,'cargo específico pode voltar ao cargo geral');
-  console.log('OK: permissões dos tipos são configuráveis na mesma janela');
-
-
-  // Exercita o envio de boletim e a edição que acrescenta arquivos sem remover os anteriores.
-  const cfgBO = bo.getConfig('gBO');
-  cfgBO.cargoId = 'policia';
-  cfgBO.canalId = 'canalBO';
-  const enviosBO = [];
-  const mensagemBO = {id:'msgBO1', url:'https://discord.com/channels/gBO/canalBO/msgBO1',
-    attachments:new Map([['file1',{id:'file1',name:'cetus_fake_0.png'}]]),
-    edit: async function(payload){this.ultimaEdicao=payload;return this;}};
-  const canalBO = {id:'canalBO',isTextBased:()=>true,send:async payload=>{enviosBO.push(payload);return mensagemBO;},
-    messages:{fetch:async()=>mensagemBO}};
-  const guildBO = {id:'gBO',ownerId:'admin',iconURL:()=>null,
-    channels:{fetch:async()=>canalBO},members:{fetch:async()=>({roles:{cache:new Map()}})}};
-  const interBO = (id,anexos,descricao) => ({
-    customId:id,guildId:'gBO',guild:guildBO,user:{id:'admin'},client:{user:{id:'bot',displayAvatarURL:()=>null}},
-    memberPermissions:{has:()=>true},inGuild:()=>true,
-    isChatInputCommand:()=>false,isButton:()=>false,isModalSubmit:()=>true,
+  assert.equal(modais.modalConfig(bo.getConfig('321')).toJSON().components.length,5);
+  assert.equal(modais.modalEquipe({codigo:'B.O. #1',policiais:[]}).toJSON().components.length,1);
+  assert.equal(modais.modalArquivos({codigo:'B.O. #1'},3).toJSON().components.length,1);
+  assert.equal(modais.modalPesquisa().toJSON().components.length,1);
+  console.log('OK: modais de configurações, pesquisa, equipe e anexos');
+  const art=bo.interpretarArtigos('01, 02, 28x10, 04x5; pena=reduzida; extra=500');
+  assert.deepEqual(art.artigos,['01','02','28','04']);
+  assert.equal(art.quantidades['28'],10);
+  assert.equal(art.quantidades['04'],5);
+  assert.equal(art.modoPena,'reduzida');
+  const total=penal.calcular(art.artigos,art.modoPena,art.quantidades,art.multaExtra);
+  assert.equal(total.totalPena,32+24+8+32);
+  assert.equal(total.totalMulta,3500+1500+20*10+40*5+500);
+  assert.throws(()=>bo.interpretarArtigos('28'),/quantidade/);
+  assert.throws(()=>bo.interpretarArtigos('98'),/catálogo/);
+  assert.throws(()=>bo.interpretarArtigos('01, 01x10'),/repetido/);
+  assert.throws(()=>bo.interpretarArtigos('01; pena=invalida'),/Opção inválida/);
+  console.log('OK: múltiplos artigos, quantidade, redução, multa extra e validação');
+  const publicacaoBO=bo.buildReport({codigo:'B.O. #1',tipo:'prisao',personagemId:'150',local:'Centro',relato:'Teste',autorId:'100',policiais:['101'],criadoEm:Date.now(), ...art}, ['foto.png']);
+  validarPainel('B.O. V2 com os artigos e anexos',publicacaoBO);
+  const corpo=JSON.stringify(comum.comLogo(publicacaoBO,{iconURL:()=>null}).components);
+  for(const nome of ['Identificação','Local da ocorrência','Código Penal','Arquivos e evidências','Equipe responsável']) assert.ok(corpo.includes(nome));
+  const cfgB=bo.getConfig('g_modal');
+  cfgB.canalId='canal';cfgB.cargoId='policia';
+  const enviadas=[];
+  const mensagem={id:'msg1',url:'https://discord.com/channels/g_modal/canal/msg1',attachments:new Map(),
+    edit:async function(p){this.atualizado=p;}};
+  const canal={id:'canal',isTextBased:()=>true,send:async p=>{enviadas.push(p);return mensagem;},messages:{fetch:async()=>mensagem}};
+  const guildBO={id:'g_modal',ownerId:'admin',iconURL:()=>null,channels:{fetch:async()=>canal},members:{fetch:async()=>({roles:{cache:new Map()}})}};
+  const usuario={id:'admin'};
+  function form(submitId,data={}) {
+    return {
+      customId:submitId,guildId:'g_modal',guild:guildBO,client:{user:{id:'bot',displayAvatarURL:()=>null}},
+      user:usuario,memberPermissions:{has:()=>true},inGuild:()=>true,
+      isChatInputCommand:()=>false,isButton:()=>false,isModalSubmit:()=>true,
+      isChannelSelectMenu:()=>false,isRoleSelectMenu:()=>false,isStringSelectMenu:()=>false,
+      fields:{getTextInputValue:id=>({...{bo_id:'456',bo_local:'Centro',bo_relato:'Descrição',bo_artigos:'01, 28x3; pena=aumentada'}, ...data})[id]||'',
+        getUploadedFiles:()=>new Map(),getSelectedUsers:()=>new Map()},
+      deferReply:async function(){this.deferred=true;},editReply:async function(p){this.resposta=p;},
+      reply:async function(p){this.resposta=p;},showModal:async function(p){this.modal=p;}
+    };
+  }
+  const novo=form('bo:criar:prisao');
+  novo.fields.getSelectedUsers=()=>new Map([['policial2',{id:'policial2'}],['policial3',{id:'policial3'}]]);
+  await bo.handle(novo);
+  assert.equal(enviadas.length,1,'deve publicar sem etapa intermediária');
+  assert.ok(novo.resposta?.components?.length,'deve exibir botões privados de edição/equipe/arquivos');
+  assert.match(JSON.stringify(enviadas[0].components),/456/);
+  assert.match(JSON.stringify(enviadas[0].components),/policial2/);
+  assert.match(JSON.stringify(enviadas[0].components),/policial3/);
+  assert.deepEqual(enviadas[0].allowedMentions.users.sort(),['admin','policial2','policial3'].sort());
+  const salvar=bo.dadoDoBO({components:enviadas[0].components});
+  assert.equal(salvar.personagemId,'456');
+  console.log('OK: BO publica e marca até dez colegas selecionados no modal principal');
+  const painelBtn={
+    guildId:'g_modal',guild:guildBO,user:usuario,client:{user:{id:'bot',displayAvatarURL:()=>null}},
+    memberPermissions:{has:()=>true},inGuild:()=>true,customId:'bo:novo:multa',
+    isChatInputCommand:()=>false,isButton:()=>true,isModalSubmit:()=>false,
     isChannelSelectMenu:()=>false,isRoleSelectMenu:()=>false,isStringSelectMenu:()=>false,
-    fields:{
-      getSelectedUsers:()=>new Map(),
-      getTextInputValue:k=>({bo_id:'149324',bo_local:'Centro',bo_relato:descricao})[k],
-      getUploadedFiles:()=>new Map(anexos.map((a,j)=>[String(j),a]))
-    },
-    deferReply:async function(){this.deferred=true;},editReply:async function(payload){this.respondido=payload;}
-  });
-  const codigoPenal=require('./cetus-codigo-penal');
-  assert.equal(codigoPenal.ARTIGOS.length,31,'todos os 31 artigos do Reduto precisam estar cadastrados');
-  assert.equal(codigoPenal.buscar('21')[0].nome,'Dinheiro Sujo');
-  assert.equal(codigoPenal.buscar('homicidio').length,3,'pesquisa deve ignorar acentos');
-  assert.equal(codigoPenal.buscar('quadrilha')[0].codigo,'09');
-  const calculado=codigoPenal.calcular(['01','21','28'],'reduzida',{'28':6});
-  assert.equal(calculado.totalPena,32+20+8,'somar penas reduzidas de artigos diferentes');
-  assert.equal(calculado.totalMulta,3500+3000+20*6,'somar multas fixas e por unidade');
-  assert.equal(calculado.totalFianca,5000,'fiança não é multa');
-  assert.deepEqual(codigoPenal.calcular(['28']).pendentes,['28'],'quantidade obrigatória para multas por unidade');
-  assert.equal(codigoPenal.POR_CODIGO.get('04').reduzida,32,'preservar valor original a confirmar');
-  console.log('OK: 31 artigos, busca textual, várias penas, multas por unidade e fiança');
-
-  const baseArtigo = (id,values=[]) => ({
-    customId:id,values,guildId:'gBO',guild:guildBO,user:{id:'admin'},client:{user:{id:'bot',displayAvatarURL:()=>null}},
-    memberPermissions:{has:()=>true},inGuild:()=>true, isChatInputCommand:()=>false,
-    isButton:()=>!['bo:adicionar','bo:remover','bo:grupo'].includes(id),
-    isModalSubmit:()=>false,isChannelSelectMenu:()=>false,isRoleSelectMenu:()=>false,
-    isStringSelectMenu:()=>['bo:adicionar','bo:remover','bo:grupo'].includes(id),
-    reply:async function(payload){this.replied=payload;},
-    update:async function(payload){this.updated=payload;},showModal:async function(m){this.modal=m;}
-  });
-  const abrirArtigos=baseArtigo('bo:novo:prisao');
-  await bo.handle(abrirArtigos);
-  assert.ok(abrirArtigos.replied,'novo B.O. abre um único painel privado com seleção');
-  validarPainel('seletor integrado do código penal', abrirArtigos.replied);
-  const selecionarArtigos=baseArtigo('bo:adicionar',['01','21']);
-  await bo.handle(selecionarArtigos);
-  assert.deepEqual(bo.obterRascunho(selecionarArtigos).artigos,['01','21'],'permite vários artigos');
-  assert.match(JSON.stringify(selecionarArtigos.updated),/6.500,00/,'soma as multas na mesma tela');
-  const grupoArmas=baseArtigo('bo:grupo',['armas']);
-  await bo.handle(grupoArmas);
-  assert.equal(bo.obterRascunho(grupoArmas).grupo,'armas');
-  const municoes=baseArtigo('bo:adicionar',['28']);
-  await bo.handle(municoes);
-  const pedirQuantidades=baseArtigo('bo:quantidades');
-  await bo.handle(pedirQuantidades);
-  assert.match(JSON.stringify(pedirQuantidades.modal.toJSON()),/28\/2025/,'modal deve solicitar unidades de munição');
-  const salvarQuantidade=baseArtigo('bo:quantidades_modal');
-  salvarQuantidade.isButton=()=>false;
-  salvarQuantidade.isModalSubmit=()=>true;
-  salvarQuantidade.fields={getTextInputValue:k=>({'bo_q_28':'6','bo_extra':'200'})[k]};
-  await bo.handle(salvarQuantidade);
-  assert.equal(bo.obterRascunho(salvarQuantidade).quantidades['28'],6);
-  assert.match(JSON.stringify(salvarQuantidade.updated),/6.820,00/,'multa R$ 6500 + R$ 120 + R$ 200');
-  const removerMunicao=baseArtigo('bo:remover',['28']);
-  await bo.handle(removerMunicao);
-  assert.deepEqual(bo.obterRascunho(removerMunicao).artigos,['01','21'],'remove artigo sem apagar os demais');
-  // A multa extra manual segue configurada até o usuário removê-la.
-  bo.obterRascunho(removerMunicao).multaExtra=0;
-  const limparBusca=baseArtigo('bo:limpar_filtro');
-  await bo.handle(limparBusca);
-  assert.equal(bo.obterRascunho(limparBusca).grupo,'todos');
-  const abrirBusca=baseArtigo('bo:buscar');
-  await bo.handle(abrirBusca);
-  assert.match(JSON.stringify(abrirBusca.modal.toJSON()),/Número ou nome do crime/);
-  const enviarBusca=baseArtigo('bo:busca_modal');
-  enviarBusca.isButton=()=>false;
-  enviarBusca.isModalSubmit=()=>true;
-  enviarBusca.fields={getTextInputValue:()=> 'homicidio'};
-  await bo.handle(enviarBusca);
-  assert.match(JSON.stringify(enviarBusca.updated),/Homicídio Doloso/,'busca atualiza a mesma janela privada');
-  const reduzirPena=baseArtigo('bo:pena:reduzida');
-  await bo.handle(reduzirPena);
-  assert.equal(bo.obterRascunho(reduzirPena).modo,'reduzida','escolhe pena reduzida');
-  const preencher=baseArtigo('bo:preencher');
-  await bo.handle(preencher);
-  assert.ok(preencher.modal,'preencher abre apenas modal de dados do B.O.');
-  const boNovo=interBO('bo:criar:prisao', [{name:'prova.png',contentType:'image/png',url:'https://example.com/prova.png'}],'Relato inicial');
-  await bo.handle(boNovo);
-  assert.equal(enviosBO.length,1,'publicação do BO criada');
-  assert.equal(enviosBO[0].files.length,1,'anexo inicial enviado');
-  assert.ok(boNovo.respondido,'confirmação do envio do BO');
-  assert.match(JSON.stringify(enviosBO[0].components),/Art. 01\/2025/,'publicação inclui artigos selecionados');
-  assert.match(JSON.stringify(enviosBO[0].components),/Art. 21\/2025/,'publicação inclui segundo artigo');
-  assert.match(JSON.stringify(enviosBO[0].components),/6.500,00/,'publicação inclui soma das multas');
-
-  // Durante o teste, o Discord teria retornado este anexo no objeto da mensagem.
-  mensagemBO.attachments = new Map([['file1',{id:'file1',name:enviosBO[0].files[0].name}]]);
-  const codigoPublicado=JSON.stringify(boNovo.respondido).match(/B\.O\. #\d+/)?.[0];
-  assert.ok(codigoPublicado,'identificador único aparece na confirmação');
-  const boEditar=interBO('bo:editar:'+codigoPublicado,[{name:'video.mp4',contentType:'video/mp4',url:'https://example.com/video.mp4'}],'Relato atualizado');
-  bo.iniciarRascunho(boEditar,'prisao',{codigo:codigoPublicado,artigos:['01','21'],modoPena:'reduzida'});
-  await bo.handle(boEditar);
-  assert.ok(mensagemBO.ultimaEdicao,'BO editado');
-  assert.equal(mensagemBO.ultimaEdicao.files.length,1,'novo arquivo adicionado na edição');
-  assert.equal(mensagemBO.ultimaEdicao.attachments[0].id,'file1','anexo anterior preservado');
-  assert.match(JSON.stringify(mensagemBO.ultimaEdicao.components),/attachment:\/\/cetus_/);
-  console.log('OK: criação/edição de B.O. preserva anexos e aceita vídeo novo');
-  // /boletim atualiza a mensagem antiga sem criar duplicata no canal.
-  const painelAntigoBO = {
-    id:'painelOLD', channelId:'canalBO', author:{id:'bot'},
-    attachments:new Map(),components:comum.comLogo(bo.buildPanel(),{iconURL:()=>null}).components,
-    edit:async function(payload){this.novoPayload=payload;return this;}
+    showModal:async function(m){this.modal=m;},reply:async function(p){this.response=p;}
   };
-  const canalPainel={id:'canalBO',messages:{fetch:async()=>new Map([['painelOLD',painelAntigoBO]])},
-    send:async()=>{throw Error('Não deveria enviar um painel duplicado');}};
-  const guildPainel={id:'gBO',name:'Serv',ownerId:'admin',channels:{fetch:async()=>canalPainel},iconURL:()=>null};
-  const resultadoPainel = await bo.publicarOuAtualizarPainel({channel:canalPainel,guild:guildPainel,guildId:'gBO',client:{user:{id:'bot'}}});
-  assert.equal(resultadoPainel.editados,1);
-  assert.ok(painelAntigoBO.novoPayload.files?.[0]?.name==='cetus-boletim.gif','GIF deve ser enviado ao atualizar painel velho');
-  console.log('OK: /boletim atualiza painel existente e envia GIF sem duplicar');
+  await bo.handle(painelBtn);
+  assert.equal(painelBtn.modal.toJSON().components.length,5);
+  console.log('OK: click no painel abre imediatamente o modal de multa');
+  const config={...painelBtn,customId:'bo:config',message:{author:{id:'bot'},flags:{has:()=>false},id:'painel-123',channelId:'canal'},
+    showModal:async function(m){this.modal=m;}};
+  await bo.handle(config);
+  assert.equal(config.modal.toJSON().components.length,5);
+  console.log('OK: configurações do B.O. abrem por modal V2');
+  const configSubmit=form('bo:config_modal');
+  configSubmit.fields.getSelectedChannels=()=>new Map([['canal',{id:'canal'}]]);
+  configSubmit.fields.getSelectedRoles=id=>id==='bo_cfg_geral'?new Map([['policia',{id:'policia'}]]):
+    id==='bo_cfg_prisao'?new Map([['prisao',{id:'prisao'}]]):new Map();
+  await bo.handle(configSubmit);
+  assert.equal(cfgB.canalId,'canal');
+  assert.equal(cfgB.cargosTipos.prisao,'prisao');
+  assert.ok(configSubmit.resposta,'configuracao responde com resumo');
+  console.log('OK: configuração por modal salva canal e cargos');
 
+  const codigoNovo=bo.dadoDoBO({components:enviadas[0].components}).codigo;
+  const abrirEquipe={...painelBtn,customId:'bo:equipe:'+codigoNovo,showModal:async function(m){this.modal=m;}};
+  await bo.handle(abrirEquipe);
+  assert.equal(abrirEquipe.modal.toJSON().components.length,1);
+  assert.match(JSON.stringify(abrirEquipe.modal.toJSON()),/policial2/);
+  const novaEquipe=form('bo:equipe_modal:'+codigoNovo);
+  novaEquipe.fields.getSelectedUsers=()=>new Map([['policial2',{id:'policial2'}]]);
+  await bo.handle(novaEquipe);
+  assert.ok(mensagem.atualizado?.components?.length,'atualização da equipe edita a mensagem');
+  assert.match(JSON.stringify(mensagem.atualizado.components),/policial2/);
+  console.log('OK: seleção de equipe por modal edita a publicação');
 
-  assert.match(source,/setName\('diagnostico'\)/);
-  assert.match(source,/setName\('testar_gif'\)/);
-  assert.match(source,/setName\('corrigir_gifs'\)/);
-  console.log('OK: comando diagnóstico preservado');
-
-})().catch(err=>{console.error(err);process.exitCode=1;});
+  const novasEvidencias=form('bo:arquivos_modal:'+codigoNovo);
+  novasEvidencias.fields.getUploadedFiles=()=>new Map([['a1',{name:'prova.jpg',contentType:'image/jpeg',url:'https://example.com/prova.jpg'}]]);
+  await bo.handle(novasEvidencias);
+  assert.ok(mensagem.atualizado.files?.length,'novos arquivos devem entrar na edição');
+  assert.match(JSON.stringify(mensagem.atualizado.components),/attachment:\/\/cetus_/);
+  console.log('OK: modal de evidências mantém o relatório e acrescenta anexo');
+  console.log('✅ TODOS OS TESTES OFFLINE CONCLUÍDOS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

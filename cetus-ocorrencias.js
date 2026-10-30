@@ -11,25 +11,8 @@ const {
 } = require('./cetus-comum');
 
 const penal = require('./cetus-codigo-penal');
+const boModais = require('./cetus-bo-modais');
 
-// Um painel privado de edição por pessoa; não há segunda tela de confirmação.
-const rascunhos = new Map();
-const DURACAO_RASCUNHO = 30 * 60 * 1000;
-const LIMITE_ARTIGOS = 20;
-const chaveRascunho = i => `${i.guildId}:${i.user.id}`;
-function obterRascunho(i) {
-  const d = rascunhos.get(chaveRascunho(i));
-  if(!d) return null;
-  if(Date.now()-d.atualizado > DURACAO_RASCUNHO) {rascunhos.delete(chaveRascunho(i));return null;}
-  d.atualizado = Date.now();
-  return d;
-}
-function iniciarRascunho(i,tipo,bo=null) {
-  const d={ tipo, codigo:bo?.codigo||null, artigos:[...(bo?.artigos||[])], modo:bo?.modoPena||'normal',
-    quantidades:{...(bo?.quantidades||{})}, multaExtra:bo?.multaExtra||0, grupo:'todos', termo:'', atualizado:Date.now() };
-  rascunhos.set(chaveRascunho(i),d);
-  return d;
-}
 const configuracoes = new Map();
 const boletins = new Map(); // TESTE: sem banco de dados; perde índice e configurações após reiniciar.
 let contador = 0;
@@ -71,6 +54,7 @@ function cabecalho() {
     .addActionRowComponents(botoes([['bo:novo:multa','Multa',ButtonStyle.Secondary,'💰']]))
     .addActionRowComponents(botoes([
       ['bo:consultar','Consultar',ButtonStyle.Secondary,'🔎'],
+      ['bo:catalogo','Pesquisar artigos',ButtonStyle.Secondary,'📚'],
       ['bo:config','Configurações',ButtonStyle.Secondary,'⚙️'],
       ['bo:minhas','Minhas',ButtonStyle.Secondary,'📁']
     ]))
@@ -130,114 +114,71 @@ function painelStatus(c) {
     [[['bo:config','Voltar',ButtonStyle.Secondary,'↩️']]],0xc0392b,
     ['ℹ️ As configurações continuam temporárias nesta versão, até conectarmos um banco de dados.']);
 }
-function desenharSeletorArtigos(d) {
-  const info = TIPOS_BO[d.tipo] || TIPOS_BO.prisao;
-  const calculo = penal.calcular(d.artigos, d.modo, d.quantidades, d.multaExtra);
-  const grupoAtual = penal.GRUPOS.find(g=>g.id===d.grupo)?.nome || 'Todos os artigos';
-  const lista = penal.buscar(d.termo,d.grupo).slice(0,25);
-  const resumo = calculo.linhas.length
-    ? calculo.linhas.map(a=>`• **Art. ${a.artigo}** — ${a.nome}${a.unidade ? ` (${a.quantidade||'quantidade pendente'} ${a.unidade})`:''} — ${a.pena} min · ${a.valorMulta===null?'multa pendente':penal.formatarMoeda(a.valorMulta)}`).join('\n')
-    : '*Nenhum artigo selecionado por enquanto.*';
-  const avisoQuant = calculo.pendentes.length
-    ? `\n⚠️ Falta informar a quantidade dos artigos: ${calculo.pendentes.map(x=>'Art. '+x+'/2025').join(', ')}.` : '';
-  const avisoArt04 = d.artigos.includes('04')
-    ? '\n⚠️ Confira o Art. 04/2025: a pena reduzida (32 min) veio maior que a normal (20 min) na tabela informada.' : '';
-  // UM único contêiner com seções separadas. Limite do Discord: 10 componentes diretos.
-  const c = new ContainerBuilder().setAccentColor(info.cor)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `# ${info.emoji} | ${info.nome} — Reduto RP\n`+
-      `### ⚖️ Código Penal e multas\n`+
-      `**Categoria:** ${grupoAtual} | **Busca:** ${d.termo||'Todas'}\n`+
-      'Selecione vários artigos, ajuste a pena e confira os valores abaixo. Tudo fica neste mesmo painel.'
-    ));
-  const grupos = new StringSelectMenuBuilder().setCustomId('bo:grupo')
-    .setPlaceholder('📚 Filtrar por categoria')
-    .addOptions([{label:'Todos os artigos',value:'todos'},...penal.GRUPOS.map(g=>({label:g.nome,value:g.id}))]);
-  c.addActionRowComponents(new ActionRowBuilder().addComponents(grupos));
-  if(lista.length) {
-    const artigos = new StringSelectMenuBuilder().setCustomId('bo:adicionar')
-      .setPlaceholder('➕ Selecione um ou mais artigos para adicionar')
-      .setMinValues(1).setMaxValues(Math.min(20,lista.length))
-      .addOptions(lista.map(a=>({label:`Art. ${a.artigo} • ${a.nome}`.slice(0,100),
-        description:`${a.normal} min • ${a.unidade ? `R$ ${a.multa}/${a.unidade}` : penal.formatarMoeda(a.multa)}`.slice(0,100),value:a.codigo})));
-    c.addActionRowComponents(new ActionRowBuilder().addComponents(artigos));
-  } else {
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent('Nenhum artigo encontrado. Pesquise por outro número ou nome.'));
-  }
-  c.addActionRowComponents(botoes([
-    ['bo:buscar','Pesquisar',ButtonStyle.Secondary,'🔎'],
-    ['bo:limpar_filtro','Limpar busca',ButtonStyle.Secondary,'🧹'],
-    ['bo:zerar','Limpar artigos',ButtonStyle.Danger,'🗑️']
-  ]))
-  .addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-  .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-    `### 📋 Artigos selecionados (${d.artigos.length}/${LIMITE_ARTIGOS})\n${resumo.slice(0,2400)}\n\n`+
-    `### ⏱️ Pena ${ {normal:'normal', reduzida:'reduzida', aumentada:'aumentada'}[d.modo]}\n`+
-    `**Tempo total:** ${calculo.totalPena} minutos\n**Multa total:** ${penal.formatarMoeda(calculo.totalMulta)}\n`+
-    `**Fiança total:** ${penal.formatarMoeda(calculo.totalFianca)} *(não incluída na multa)*`+
-    avisoQuant + avisoArt04
-  ));
-  if(d.artigos.length) {
-    const remover = new StringSelectMenuBuilder().setCustomId('bo:remover')
-      .setPlaceholder('➖ Remover artigo(s) selecionado(s)')
-      .setMinValues(1).setMaxValues(Math.min(d.artigos.length,LIMITE_ARTIGOS))
-      .addOptions(d.artigos.map(cod=>{
-        const a=penal.POR_CODIGO.get(cod);
-        return {label:`Art. ${a.artigo} • ${a.nome}`.slice(0,100),value:cod};
-      }));
-    c.addActionRowComponents(new ActionRowBuilder().addComponents(remover));
-  }
-  c.addActionRowComponents(botoes([
-    ['bo:pena:normal','Normal',d.modo==='normal'?ButtonStyle.Primary:ButtonStyle.Secondary],
-    ['bo:pena:reduzida','Reduzida',d.modo==='reduzida'?ButtonStyle.Primary:ButtonStyle.Secondary],
-    ['bo:pena:aumentada','Aumentada',d.modo==='aumentada'?ButtonStyle.Primary:ButtonStyle.Secondary]
-  ]))
-  .addActionRowComponents(botoes([
-    ['bo:quantidades','Quantidades / Multa extra',ButtonStyle.Secondary,'💰'],
-    ['bo:preencher','Preencher e publicar B.O.',ButtonStyle.Success,'📝']
-  ]))
-  .addTextDisplayComponents(new TextDisplayBuilder().setContent(BRAND));
-  return {flags:MessageFlags.IsComponentsV2,components:[c]};
-}
-function modalQuantidade(d) {
-  const porUnidade=d.artigos.map(cod=>penal.POR_CODIGO.get(cod)).filter(a=>a.unidade);
-  return modal('bo:quantidades_modal','Quantidades e multa',[
-    ...porUnidade.map(a=>campo(`bo_q_${a.codigo}`,`Qtd. Art. ${a.artigo} (${a.unidade})`,
-      {value:String(d.quantidades[a.codigo]||1),max:6,placeholder:'Ex.: 5'})),
-    campo('bo_extra','Multa extra (R$, sem centavos)',{value:String(d.multaExtra||0),max:8,placeholder:'0'})
-  ]);
-}
+// O preenchimento usa Modal V2 (type 18 Label), sem painel intermediário de artigos.
 function modalBO(bo = null, tipo = 'prisao') {
-  const usuario = new UserSelectMenuBuilder().setCustomId('bo_policiais')
-    .setMinValues(0).setMaxValues(10).setRequired(false);
-  if (bo?.policiais?.length) usuario.setDefaultUsers(...bo.policiais);
   const info = TIPOS_BO[bo?.tipo || tipo] || TIPOS_BO.prisao;
-  // Cada formulário tem cinco campos, o máximo permitido pelo Discord.
-  // Arquivos, local, texto e equipe são campos independentes.
-  return modal(bo ? `bo:editar:${bo.codigo}` : `bo:criar:${bo?.tipo || tipo}`,
-    bo ? `Editar ${bo.codigo}` : `Novo B.O.: ${info.nome}`, [
-      campo('bo_id','👤 Acusado / ID do personagem', {
-        value:bo?.personagemId,max:80,placeholder:'Ex.: 1234'
-      }),
-      campo('bo_local','📍 Local da ocorrência', {
-        value:bo?.local,max:150,placeholder:'Ex.: Praça Central, Bairro Norte'
-      }),
-      campo('bo_relato',info.campoDescricao, {
-        value:bo?.relato,max:1800,paragraph:true,placeholder:info.exemplo
-      }),
-      new LabelBuilder().setLabel('👮 Policiais envolvidos (opcional)').setUserSelectMenuComponent(usuario),
-      upload('bo_anexos','📁 Fotos e vídeos (até 10 no B.O.)',10)
-    ]);
+  return boModais.modalBO(bo,tipo,info);
 }
-function registroDaInteracao(i, tipo = 'prisao') {
-  const policiais = [...(i.fields.getSelectedUsers('bo_policiais', false)?.keys() || [])];
+function registroDaInteracao(i, tipo = 'prisao', antigo = null) {
   return {
     tipo,
-    personagemId: limpar(i.fields.getTextInputValue('bo_id'), 80),
-    local: limpar(i.fields.getTextInputValue('bo_local'), 150),
-    relato: limpar(i.fields.getTextInputValue('bo_relato'), 1800),
-    policiais
+    personagemId: limpar(i.fields.getTextInputValue('bo_id'),80),
+    local: limpar(i.fields.getTextInputValue('bo_local'),150),
+    relato: limpar(i.fields.getTextInputValue('bo_relato'),1800),
+    policiais: usuariosDaEquipe(i)
   };
+}
+function usuariosDaEquipe(i) {
+  return [...(i.fields.getSelectedUsers('bo_policiais',false)?.keys() || [])];
+}
+async function validarColegas(i, usuarios) {
+  if (usuarios.length > 10 || new Set(usuarios).size !== usuarios.length) {
+    await responder(i,'⚠️ Selecione até 10 colegas distintos.');
+    return false;
+  }
+  // O autor já é registrado automaticamente; não precisa entrar na lista.
+  const c = cfg(i.guildId);
+  const autorizados = [c.cargoId,...Object.values(c.cargosTipos||{})].filter(Boolean);
+  for (const id of usuarios) {
+    if (id === i.user.id) continue;
+    let membro;
+    try { membro = await i.guild.members.fetch(id); }
+    catch { await responder(i,'⚠️ Um dos colegas selecionados não está mais no servidor.'); return false; }
+    if (!donoAdmin(i) && !autorizados.some(cargo=>membro.roles.cache.has(cargo))) {
+      await responder(i,'❌ Escolha apenas membros autorizados da corporação.');
+      return false;
+    }
+  }
+  return true;
+}
+function painelAcoesBO(bo) {
+  return caixa('✅ | B.O. salvo com sucesso',
+    `**${bo.codigo}** — ${bo.tipo}\n\n[Ver publicação](${bo.url})\n\n`+
+    '**Equipe:** os colegas escolhidos já foram registrados.\n' +
+    '**Evidências:** toque em **Arquivos** para anexar fotos ou vídeos (até 10).\n\n' +
+    'Use **Editar B.O.** para alterar os dados e **Equipe** para ajustar os participantes.',
+    TIPOS_BO[bo.tipo]?.cor || 0xc0392b,
+    [[
+      [`bo:editar_btn:${bo.codigo}`,'Editar B.O.',ButtonStyle.Primary,'📝'],
+      [`bo:equipe:${bo.codigo}`,'Equipe',ButtonStyle.Secondary,'👮'],
+      [`bo:arquivos:${bo.codigo}`,'Arquivos',ButtonStyle.Secondary,'📁']
+    ]]
+  );
+}
+async function editarMensagemBO(i,b,adicionais=[]) {
+  const canal=await i.guild.channels.fetch(b.canalId);
+  if (!canal?.messages?.fetch) throw Error('Canal do relatório não encontrado.');
+  const msg=await canal.messages.fetch(b.mensagemId);
+  const existentes=[...(msg.attachments?.values?.()||[])];
+  const nomes=[...existentes.map(x=>x.name),...adicionais.map(x=>x.name)];
+  if(nomes.length>10) throw Error('Limite de 10 evidências por relatório.');
+  const payload=comLogo(gerarPublicacao(b,nomes),i.guild,i.client);
+  await msg.edit({...payload, ...(adicionais.length?{files:adicionais}:{}), attachments:existentes.map(x=>({id:x.id}))});
+  b.arquivos=nomes;
+  return msg;
+}
+function permissaoEdicao(i,b) {
+  return b && b.guildId===i.guildId && (b.autorId===i.user.id || donoAdmin(i));
 }
 function gerarPublicacao(b, listaNomes = []) {
   const info = TIPOS_BO[b.tipo] || TIPOS_BO.prisao;
@@ -474,102 +415,53 @@ async function handle(i) {
       return true;
     }
     if (isBtn && i.customId === 'bo:config') {
-      if (!donoAdmin(i)) { await responder(i, '❌ Apenas administradores podem configurar.'); return true; }
+      if(!donoAdmin(i)) {await responder(i,'❌ Apenas administradores podem configurar.');return true;}
       registrarPainelDoClique('boletim',i);
-      await abrirConfig(i, painelConfig(cfg(i.guildId))); return true;
-    }
-    if(isBtn && i.customId === 'bo:config_status') {
-      if(!donoAdmin(i)) {await responder(i,'❌ Apenas administradores podem consultar as configurações.');return true;}
-      await atualizar(i,painelStatus(cfg(i.guildId)));return true;
-    }
-    if (isSelect && (['bo:selecionar_canal','bo:selecionar_cargo'].includes(i.customId)
-      || i.customId.startsWith('bo:selecionar_tipo_'))) {
-      if (!donoAdmin(i)) { await responder(i, '❌ Sem permissão.'); return true; }
-      const c=cfg(i.guildId);
-      if(i.customId === 'bo:selecionar_canal') c.canalId=i.values[0];
-      else if(i.customId === 'bo:selecionar_cargo') c.cargoId=i.values[0] || null;
-      else {
-        const tipo=i.customId.slice('bo:selecionar_tipo_'.length);
-        if(!TIPOS_BO[tipo]) {await responder(i,'❌ Tipo de ocorrência inválido.');return true;}
-        c.cargosTipos[tipo]=i.values[0] || null;
-      }
-      await atualizar(i,painelConfig(c));
-      await sincronizarPaineis('boletim',i.guild,i.client,()=>cabecalho());
+      await i.showModal(boModais.modalConfig(cfg(i.guildId)));
       return true;
     }
-    if (isBtn && ['bo:novo:prisao', 'bo:novo:apreensao', 'bo:novo:multa'].includes(i.customId)) {
-      const tipo = i.customId.split(':')[2] || 'prisao';
-      if (!(await autorizado(i,tipo))) return true;
-      const d=iniciarRascunho(i,tipo);
-      await responder(i,desenharSeletorArtigos(d));return true;
+    if(isModal && i.customId==='bo:config_modal') {
+      if(!donoAdmin(i)) {await responder(i,'❌ Sem permissão.');return true;}
+      const c=cfg(i.guildId);
+      const selected=(getter,id)=>[...(getter.call(i.fields,id,false)?.keys()||[])][0]||null;
+      const canal=selected(i.fields.getSelectedChannels,'bo_cfg_canal');
+      if(!canal) {await responder(i,'⚠️ Selecione o canal dos relatórios.');return true;}
+      c.canalId=canal;
+      c.cargoId=selected(i.fields.getSelectedRoles,'bo_cfg_geral');
+      for(const tipo of Object.keys(TIPOS_BO)) c.cargosTipos[tipo]=selected(i.fields.getSelectedRoles,'bo_cfg_'+tipo);
+      await i.deferReply({flags:MessageFlags.Ephemeral});
+      await sincronizarPaineis('boletim',i.guild,i.client,()=>cabecalho());
+      await responder(i,painelStatus(c));return true;
     }
-    // O painel de artigos permanece numa única mensagem privada; as buscas e somas
-    // atualizam a própria mensagem sem abrir uma segunda página de configuração.
-    if ((isBtn || isSelect || isModal) && (
-      i.customId.startsWith('bo:pena:') || ['bo:grupo','bo:adicionar','bo:remover','bo:buscar','bo:busca_modal',
-        'bo:limpar_filtro','bo:zerar','bo:quantidades','bo:quantidades_modal','bo:preencher'].includes(i.customId)
-    )) {
-      const d=obterRascunho(i);
-      if(!d) {await responder(i,'⚠️ Rascunho expirado. Clique novamente em Prisão, Apreensão ou Multa.');return true;}
-      if(!(await autorizado(i,d.tipo))) return true;
-      if(isBtn && i.customId==='bo:buscar') {
-        await i.showModal(modal('bo:busca_modal','Pesquisar artigo do Reduto',[
-          campo('bo_termo','Número ou nome do crime',{required:false,max:60,placeholder:'Ex.: 21, veículo, tráfico'})
-        ]));return true;
-      }
-      if(isModal && i.customId==='bo:busca_modal') {
-        d.termo=i.fields.getTextInputValue('bo_termo').trim();
-        d.grupo='todos'; // A busca por nome ou número sempre pesquisa todas as categorias.
-        // O modal foi aberto sobre o mesmo painel privado, que recebe o novo filtro.
-        await atualizar(i,desenharSeletorArtigos(d));return true;
-      }
-      if(isSelect && i.customId==='bo:grupo') {d.grupo=i.values[0];d.termo='';}
-      if(isSelect && i.customId==='bo:adicionar') {
-        const permitidos=new Set(penal.buscar(d.termo,d.grupo).slice(0,25).map(a=>a.codigo));
-        const novos=i.values.filter(cod=>permitidos.has(cod) && !d.artigos.includes(cod));
-        if(d.artigos.length+novos.length>LIMITE_ARTIGOS) {
-          await responder(i,`⚠️ São permitidos até ${LIMITE_ARTIGOS} artigos por B.O. Remova um antes de adicionar outro.`);return true;
-        }
-        d.artigos.push(...novos);
-      }
-      if(isSelect && i.customId==='bo:remover') {
-        const removidos=new Set(i.values);
-        d.artigos=d.artigos.filter(cod=>!removidos.has(cod));
-        for(const cod of removidos) delete d.quantidades[cod];
-      }
-      if(isBtn && i.customId==='bo:limpar_filtro') {d.termo='';d.grupo='todos';}
-      if(isBtn && i.customId==='bo:zerar') {d.artigos=[];d.quantidades={};d.multaExtra=0;}
-      if(isBtn && i.customId.startsWith('bo:pena:')) {d.modo=i.customId.slice('bo:pena:'.length);}
-      if(isBtn && i.customId==='bo:quantidades') {
-        await i.showModal(modalQuantidade(d));return true;
-      }
-      if(isModal && i.customId==='bo:quantidades_modal') {
-        for(const cod of d.artigos) {
-          const a=penal.POR_CODIGO.get(cod);
-          if(!a?.unidade) continue;
-          const qtd=Number(i.fields.getTextInputValue(`bo_q_${cod}`));
-          if(!Number.isSafeInteger(qtd)||qtd<1||qtd>100000) {
-            await responder(i,`⚠️ Quantidade inválida para o Art. ${a.artigo}. Informe um número entre 1 e 100000.`);return true;
-          }
-          d.quantidades[cod]=qtd;
-        }
-        const extra=Number(i.fields.getTextInputValue('bo_extra'));
-        if(!Number.isSafeInteger(extra)||extra<0||extra>10000000) {
-          await responder(i,'⚠️ A multa extra deve ser um valor inteiro de R$ 0 a R$ 10.000.000.');return true;
-        }
-        d.multaExtra=extra;
-        await atualizar(i,desenharSeletorArtigos(d));return true;
-      }
-      if(isBtn && i.customId==='bo:preencher') {
-        const soma=penal.calcular(d.artigos,d.modo,d.quantidades,d.multaExtra);
-        if(soma.pendentes.length) {await responder(i,'⚠️ Informe as quantidades dos artigos com multa por unidade antes de publicar.');return true;}
-        const antigo=d.codigo?boletins.get(d.codigo):null;
-        if(d.codigo && (!antigo || antigo.autorId!==i.user.id || antigo.guildId!==i.guildId)) {
-          await responder(i,'⚠️ A edição desse B.O. não está disponível nesta sessão.');return true;
-        }
-        await i.showModal(modalBO(antigo,d.tipo));return true;
-      }
-      await atualizar(i,desenharSeletorArtigos(d));return true;
+    // Compatibilidade com controles publicados antes da atualização.
+    if(isBtn && i.customId==='bo:config_status') {
+      if(!donoAdmin(i)) {await responder(i,'❌ Sem permissão.');return true;}
+      await responder(i,painelStatus(cfg(i.guildId)));return true;
+    }
+    if(isBtn && ['bo:novo:prisao','bo:novo:apreensao','bo:novo:multa'].includes(i.customId)) {
+      const tipo=i.customId.split(':')[2];
+      if(!(await autorizado(i,tipo))) return true;
+      await i.showModal(modalBO(null,tipo));return true;
+    }
+    if(isBtn && i.customId==='bo:catalogo') {
+      if(!(await autorizado(i))) return true;
+      await i.showModal(boModais.modalPesquisa());return true;
+    }
+    if(isModal && i.customId==='bo:codigo_modal') {
+      if(!(await autorizado(i))) return true;
+      const termo=limpar(i.fields.getTextInputValue('bo_termo'),60);
+      const encontrados=penal.buscar(termo).slice(0,31);
+      const texto=encontrados.length?encontrados.map(a=>`**Art. ${a.artigo} — ${a.nome}**\n${a.normal} min normal · ${a.reduzida} reduzida · ${a.aumentada} aumentada\nMulta: ${penal.formatarMoeda(a.multa)}${a.unidade?' por '+a.unidade:''}`).join('\n\n'):'Nenhum artigo encontrado.';
+      const corpo=texto.length>3700?texto.slice(0,3700)+'\n… (pesquise mais especificamente) ':texto;
+      await responder(i,caixa('📚 Código Penal — Reduto RP',
+        `**Busca:** ${termo||'todos'}\n\n${corpo}\n\n**No B.O.:** separe artigos por vírgula; para quantidades use 28x10.`,
+        0xc0392b,[[['bo:catalogo','Nova pesquisa',ButtonStyle.Secondary,'🔎']]]));
+      return true;
+    }
+    // Botões antigos da seleção em painel: avisar para reabrir o B.O.
+    if((isBtn||isSelect||isModal) && (/^bo:pena:/.test(i.customId) ||
+      ['bo:grupo','bo:adicionar','bo:remover','bo:buscar','bo:busca_modal','bo:limpar_filtro','bo:zerar','bo:quantidades','bo:quantidades_modal','bo:preencher'].includes(i.customId))) {
+      await responder(i,'ℹ️ Este painel antigo foi substituído pelo Modal V2. Clique em Prisão, Apreensão ou Multa no painel principal.');return true;
     }
     if (isBtn && i.customId === 'bo:consultar') {
       if (!(await autorizado(i))) return true;
@@ -588,77 +480,83 @@ async function handle(i) {
       if (!(await autorizado(i))) return true;
       await menuMinhas(i); return true;
     }
-    if (isSelect && i.customId === 'bo:escolher') {
-      if (!(await autorizado(i))) return true;
-      const b = boletins.get(i.values[0]);
-      if (!b || b.guildId !== i.guildId || b.autorId !== i.user.id) {
-        await responder(i, '❌ Você só pode editar seus próprios boletins.'); return true;
-      }
-      await responder(i,desenharSeletorArtigos(iniciarRascunho(i,b.tipo,b))); return true;
+    if(isSelect && i.customId==='bo:escolher') {
+      if(!(await autorizado(i))) return true;
+      const b=boletins.get(i.values[0]);
+      if(!permissaoEdicao(i,b)) {await responder(i,'❌ Apenas o autor ou administrador pode editar.');return true;}
+      await i.showModal(modalBO(b,b.tipo));return true;
     }
-    if (isModal && (i.customId.startsWith('bo:criar:') || i.customId.startsWith('bo:editar:'))) {
-      const editando = i.customId.startsWith('bo:editar:');
-      const codigo = editando ? i.customId.slice('bo:editar:'.length) : null;
-      const antigo = editando ? boletins.get(codigo) : null;
-      if (editando && (!antigo || antigo.guildId !== i.guildId || antigo.autorId !== i.user.id)) {
-        await responder(i, '❌ Apenas o autor pode editar este BO.'); return true;
+    if(isBtn && (i.customId.startsWith('bo:editar_btn:')||i.customId.startsWith('bo:equipe:')||i.customId.startsWith('bo:arquivos:'))) {
+      const prefixo=i.customId.split(':').slice(0,2).join(':')+':';
+      const b=boletins.get(i.customId.slice(prefixo.length));
+      if(!permissaoEdicao(i,b)) {await responder(i,'❌ Você só pode alterar seus próprios boletins desta sessão.');return true;}
+      if(!(await autorizado(i,b.tipo))) return true;
+      if(prefixo==='bo:editar_btn:') await i.showModal(modalBO(b,b.tipo));
+      else if(prefixo==='bo:equipe:') await i.showModal(boModais.modalEquipe(b));
+      else {
+        const total=b.arquivos?.length||0;
+        if(total>=10) {await responder(i,'⚠️ Este boletim já possui 10 arquivos.');return true;}
+        await i.showModal(boModais.modalArquivos(b,10-total));
       }
-      const tipo = editando ? (antigo?.tipo || 'prisao') : (i.customId.split(':')[2] || 'prisao');
+      return true;
+    }
+    if(isModal && i.customId.startsWith('bo:equipe_modal:')) {
+      const b=boletins.get(i.customId.slice('bo:equipe_modal:'.length));
+      if(!permissaoEdicao(i,b)) {await responder(i,'❌ Sem permissão de edição.');return true;}
+      if(!(await autorizado(i,b.tipo))) return true;
+      const usuarios=usuariosDaEquipe(i);
+      if(!(await validarColegas(i,usuarios))) return true;
+      await i.deferReply({flags:MessageFlags.Ephemeral});
+      const novo={...b,policiais:usuarios,editadoEm:Date.now()};
+      await editarMensagemBO(i,novo);
+      boletins.set(b.codigo,novo);
+      await responder(i,painelAcoesBO(novo));return true;
+    }
+    if(isModal && i.customId.startsWith('bo:arquivos_modal:')) {
+      const b=boletins.get(i.customId.slice('bo:arquivos_modal:'.length));
+      if(!permissaoEdicao(i,b)) {await responder(i,'❌ Sem permissão de edição.');return true;}
+      if(!(await autorizado(i,b.tipo))) return true;
+      const fotos=arquivos(i,'bo_anexos',10-(b.arquivos?.length||0),false);
+      if(!fotos.length) {await responder(i,'⚠️ Anexe pelo menos um arquivo.');return true;}
+      await i.deferReply({flags:MessageFlags.Ephemeral});
+      const novo={...b,editadoEm:Date.now()};
+      await editarMensagemBO(i,novo,envioArquivos(fotos));
+      boletins.set(b.codigo,novo);
+      await responder(i,painelAcoesBO(novo));return true;
+    }
+    if(isModal && (i.customId.startsWith('bo:criar:')||i.customId.startsWith('bo:editar:'))) {
+      const editando=i.customId.startsWith('bo:editar:');
+      const codigo=editando?i.customId.slice('bo:editar:'.length):null;
+      const antigo=editando?boletins.get(codigo):null;
+      if(editando&&!permissaoEdicao(i,antigo)) {await responder(i,'❌ Apenas o autor ou administrador pode editar este B.O. nesta sessão.');return true;}
+      const tipo=editando?antigo.tipo:(i.customId.split(':')[2]||'prisao');
       if(!TIPOS_BO[tipo]) {await responder(i,'❌ Tipo de boletim inválido.');return true;}
-      if (!(await autorizado(i,tipo))) return true;
-      const dados = registroDaInteracao(i, tipo);
-      const d=obterRascunho(i);
-      if(!d || d.tipo!==tipo || (editando ? d.codigo!==codigo : !!d.codigo)) {
-        await responder(i,'⚠️ Seu painel de artigos expirou. Reabra Prisão, Apreensão ou Multa para selecionar os artigos novamente.');return true;
-      }
-      const soma=penal.calcular(d.artigos,d.modo,d.quantidades,d.multaExtra);
-      if(soma.pendentes.length) {await responder(i,'⚠️ Informe as quantidades antes de publicar.');return true;}
-      dados.artigos=[...d.artigos];
-      dados.modoPena=d.modo;
-      dados.quantidades={...d.quantidades};
-      dados.multaExtra=d.multaExtra;
-      if(!dados.personagemId || !dados.local || !dados.relato) {
-        await responder(i,'⚠️ Preencha o ID, o local e a descrição do B.O.');return true;
-      }
-      const fotos = arquivos(i, 'bo_anexos', 10, false);
-      const arquivosAntigos = editando ? (antigo.arquivos || []) : [];
-      if (arquivosAntigos.length + fotos.length > 10) {
-        await responder(i, '⚠️ Limite de 10 arquivos por boletim. Para adicionar mais, é preciso remover anexos antigos antes.'); return true;
-      }
-      const c = cfg(i.guildId);
-      for (const id of dados.policiais) {
-        const m = await i.guild.members.fetch(id);
-        const cargosPermitidos=[c.cargoId,...Object.values(c.cargosTipos || {})].filter(Boolean);
-        if (!cargosPermitidos.some(cargoId=>m.roles.cache.has(cargoId)) && !donoAdmin(i)) {
-          await responder(i, '❌ Marque apenas membros da corporação.'); return true;
-        }
-      }
-      await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const canal = await i.guild.channels.fetch(editando ? antigo.canalId : c.canalId);
-      if (!podeEnviar(canal)) throw new Error('Canal dos BOs não existe ou o bot não pode enviar mensagens.');
-      if (!editando) {
-        contador++;
-        const b = { ...dados, codigo: `B.O. #${Date.now()}`, guildId: i.guildId,
-          autorId: i.user.id, criadoEm: Date.now(), editadoEm: null, canalId: canal.id };
-        const files = envioArquivos(fotos);
-        const payload = gerarPublicacao(b, files.map(f => f.name));
-        const msg = await enviarV2(canal, { ...payload, ...(files.length ? { files } : {}) });
-        b.mensagemId = msg.id; b.url = msg.url; b.arquivos = files.map(f => f.name);
-        boletins.set(b.codigo, b);
-        rascunhos.delete(chaveRascunho(i));
-        await responder(i, `✅ **${b.codigo}** publicado: ${msg.url}\n⚖️ Pena: **${soma.totalPena} min** | Multas: **${penal.formatarMoeda(soma.totalMulta)}**`);
+      if(!(await autorizado(i,tipo))) return true;
+      const dados=registroDaInteracao(i,tipo,antigo);
+      if(!dados.personagemId||!dados.local||!dados.relato) {await responder(i,'⚠️ Preencha ID, local e descrição.');return true;}
+      dados.policiais = dados.policiais.filter(id=>id!==i.user.id);
+      if(!(await validarColegas(i,dados.policiais))) return true;
+      const codigos=boModais.interpretarArtigos(i.fields.getTextInputValue('bo_artigos'));
+      Object.assign(dados,codigos);
+      const soma=penal.calcular(codigos.artigos,codigos.modoPena,codigos.quantidades,codigos.multaExtra);
+      // O modal principal reserva o quinto campo para os colegas.
+      // Evidências são opcionais e adicionadas pelo botão Arquivos após salvar.
+      await i.deferReply({flags:MessageFlags.Ephemeral});
+      const c=cfg(i.guildId);
+      if(!editando) {
+        const canal=await i.guild.channels.fetch(c.canalId);
+        if(!podeEnviar(canal)) throw Error('Canal de relatórios não configurado ou inacessível.');
+        const b={...dados,codigo:`B.O. #${Date.now()}`,guildId:i.guildId,autorId:i.user.id,
+          criadoEm:Date.now(),editadoEm:null,canalId:canal.id};
+        const msg=await enviarV2(canal,gerarPublicacao(b,[]));
+        b.mensagemId=msg.id;b.url=msg.url;b.arquivos=[];
+        boletins.set(b.codigo,b);
+        await responder(i,painelAcoesBO(b));
       } else {
-        const msg = await canal.messages.fetch(antigo.mensagemId);
-        const adicionais = envioArquivos(fotos);
-        const nomesAnexos = [...arquivosAntigos, ...adicionais.map(f => f.name)];
-        const novo = { ...antigo, ...dados, editadoEm: Date.now(), arquivos: nomesAnexos };
-        // Preserva os arquivos publicados antes e acrescenta os novos, sem apagá-los.
-        await msg.edit({ ...comLogo(gerarPublicacao(novo, nomesAnexos), i.guild, i.client),
-          ...(adicionais.length ? { files: adicionais } : {}),
-          attachments: [...msg.attachments.values()].map(a => ({ id: a.id })) });
-        boletins.set(codigo, novo);
-        rascunhos.delete(chaveRascunho(i));
-        await responder(i, `✅ **${codigo}** editado com sucesso: ${msg.url}\n⚖️ Pena: **${soma.totalPena} min** | Multas: **${penal.formatarMoeda(soma.totalMulta)}**`);
+        const b={...antigo,...dados,editadoEm:Date.now()};
+        await editarMensagemBO(i,b);
+        boletins.set(codigo,b);
+        await responder(i,painelAcoesBO(b));
       }
       return true;
     }
@@ -666,5 +564,5 @@ async function handle(i) {
   } catch (e) { await erro(i, e); return true; }
 }
 module.exports = { comandos, handle, getConfig:cfg, painelConfig, painelStatus, buildPanel:cabecalho, buildModal:modalBO, buildReport:gerarPublicacao, buscarBOsPorId, textoDaMensagem, dadoDoBO, ehPainelBO, publicarOuAtualizarPainel,
-  desenharSeletorArtigos, iniciarRascunho, obterRascunho, registrarPainel:(id,msg)=>registrarPainelMensagem('boletim',id,msg) };
+  interpretarArtigos:boModais.interpretarArtigos, registrarPainel:(id,msg)=>registrarPainelMensagem('boletim',id,msg) };
 
